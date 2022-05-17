@@ -1,8 +1,8 @@
-use aes_gcm::{
-    aead::generic_array::GenericArray, aes::Aes256, AeadInPlace, NewAead, AesGcm,
-};
-use cipher::consts::U32;
+use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AeadInPlace, AesGcm, NewAead};
+use cipher::consts::{U16, U32};
 use hkdf::Hkdf;
+
+type Aes256Gcm = AesGcm<Aes256, U16>;
 
 pub struct ContentEnc {
     key: GenericArray<u8, U32>,
@@ -56,7 +56,7 @@ impl ContentEnc {
             aad.extend(file_id);
         }
 
-        let aes = AesGcm::<Aes256, cipher::consts::U16>::new(&self.key);
+        let aes = Aes256Gcm::new(&self.key);
 
         aes.decrypt_in_place_detached(
             GenericArray::from_slice(nonce),
@@ -66,6 +66,6 @@ impl ContentEnc {
         )
         .unwrap();
 
-        return Ok(buf);
+        return Ok(buf.to_vec());
     }
 }

@@ -5,14 +5,17 @@ use std::{
 };
 
 use anyhow::Context;
-use args::DecryptCommand;
 use clap::Parser;
+use filename::FilenameDecoder;
 
 use crate::content_enc::ContentEnc;
+
+use args::{DecryptCommand, LsCommand};
 
 mod args;
 mod config;
 mod content_enc;
+mod filename;
 
 fn main() -> anyhow::Result<()> {
     let args = args::Args::parse();
@@ -20,7 +23,47 @@ fn main() -> anyhow::Result<()> {
 
     match &args.command {
         args::Commands::Decrypt(c) => decrypt_file(c),
+        args::Commands::Ls(c) => ls(c),
     }
+}
+
+fn ls(c: &LsCommand) -> anyhow::Result<()> {
+    let folder_path = Path::new(&c.folder_path);
+    let config_path = c
+        .gocryptfs_conf_path
+        .as_ref()
+        .map(|p| PathBuf::from(p))
+        .unwrap_or_else(|| folder_path.join("gocryptfs.conf"));
+
+    let content = fs::read_to_string(config_path)?;
+
+    let conf: config::CryptConf =
+        serde_json::from_str(&content).context("Failed to decode configuration")?;
+
+    let master_key = conf.get_master_key(c.password.as_ref().unwrap().as_bytes())?;
+
+    let filename_decoder = FilenameDecoder::new(&master_key)?;
+
+    let iv = std::fs::read(folder_path.join("gocryptfs.diriv"))?;
+
+    let dir_decoder = filename_decoder.get_decoder_for_dir(&iv);
+
+    for dir in std::fs::read_dir(folder_path)?.flat_map(|e| e.ok()) {
+        let filename = dir.file_name();
+        let filename = filename.to_str().unwrap();
+
+        if filename != "."
+            && filename != ".."
+            && filename != "gocryptfs.conf"
+            && filename != "gocryptfs.diriv"
+        {
+            if let Ok(res) = dir_decoder.decode_filename(filename) {
+                println!("{}", res);
+            }
+        }
+    }
+
+    return Ok(());
 }
 
 fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {

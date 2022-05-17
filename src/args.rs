@@ -11,12 +11,29 @@ pub(crate) struct Args {
 pub(crate) enum Commands {
     /// Decrypt a file
     Decrypt(DecryptCommand),
+
+    // List file contained in a directory
+    Ls(LsCommand),
 }
 
 #[derive(Debug, Parser)]
 pub(crate) struct DecryptCommand {
     /// The file to decrypt
     pub(crate) file_path : String,
+
+    /// Path to the gocryptfs.conf
+    #[clap(short('c'), long)]
+    pub(crate) gocryptfs_conf_path : Option<String>,
+
+    /// The password
+    #[clap(short, long)]
+    pub(crate) password : Option<String>
+}
+
+#[derive(Debug, Parser)]
+pub(crate) struct LsCommand {
+    /// The directory
+    pub(crate) folder_path : String,
 
     /// Path to the gocryptfs.conf
     #[clap(short('c'), long)]
