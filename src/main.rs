@@ -57,9 +57,18 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
             && filename != "gocryptfs.conf"
             && filename != "gocryptfs.diriv"
         {
-            if let Ok(res) = dir_decoder.decode_filename(filename) {
-                println!("{}", res);
-            }
+            if filename.starts_with("gocryptfs.longname.") {
+                if !filename.ends_with(".name") {
+                    let filename = std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))?;
+                    if let Ok(res) = dir_decoder.decode_filename(&filename) {
+                        println!("{}", res);
+                    }
+                }
+            } else {
+                if let Ok(res) = dir_decoder.decode_filename(&filename) {
+                    println!("{}", res);
+                }
+            };
         }
     }
 
