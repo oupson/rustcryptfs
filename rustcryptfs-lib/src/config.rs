@@ -7,8 +7,10 @@ use aes_gcm::{
 };
 use hkdf::Hkdf;
 
+use crate::error::{Result, FilenameDecryptError, ScryptError};
+
 #[derive(serde::Deserialize, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum FeatureFlag {
+pub enum FeatureFlag {
     /// FlagPlaintextNames indicates that filenames are unencrypted.
     PlaintextNames,
     /// FlagDirIV indicates that a per-directory IV file is used.
@@ -45,7 +47,7 @@ pub(crate) enum FeatureFlag {
 }
 
 #[derive(serde::Deserialize, Debug)]
-pub(crate) struct CryptConf {
+pub struct CryptConf {
     #[serde(rename = "Creator")]
     creator: String,
     #[serde(rename = "EncryptedKey")]
@@ -59,7 +61,7 @@ pub(crate) struct CryptConf {
 }
 
 impl CryptConf {
-    pub(crate) fn get_master_key(&self, password: &[u8]) -> anyhow::Result<Vec<u8>> {
+    pub fn get_master_key(&self, password: &[u8]) -> Result<Vec<u8>> {
         let block = base64::decode(&self.encrypted_key)?;
         let key = self.scrypt_object.get_hkdf_key(password)?;
 
@@ -76,19 +78,18 @@ impl CryptConf {
             &[0u8, 0, 0, 0, 0, 0, 0, 0],
             &mut buf,
             GenericArray::from_slice(tag),
-        )
-        .unwrap();
+        )?;
 
         Ok(buf)
     }
 
-    pub(crate) fn have_feature_flag(&self, flag: &FeatureFlag) -> bool {
+    pub fn have_feature_flag(&self, flag: &FeatureFlag) -> bool {
         self.feature_flags.contains(flag)
     }
 }
 
 #[derive(serde::Deserialize, Debug)]
-pub(crate) struct ScryptObject {
+pub struct ScryptObject {
     #[serde(rename = "Salt")]
     salt: String,
     #[serde(rename = "N")]
@@ -102,22 +103,20 @@ pub(crate) struct ScryptObject {
 }
 
 impl ScryptObject {
-    pub(crate) fn get_hkdf_key(&self, password: &[u8]) -> anyhow::Result<Vec<u8>> {
+    pub fn get_hkdf_key(&self, password: &[u8]) -> std::result::Result<Vec<u8>, FilenameDecryptError> {
         let mut key = [0u8; 32];
 
-        let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p)?;
+        let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p).map_err(|e| ScryptError::from(e))?;
 
         scrypt::scrypt(
             password,
             &base64::decode(&self.salt).unwrap(),
             &params,
             &mut key,
-        )?;
+        ).map_err(|e| ScryptError::from(e))?;
 
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &key);
-
-        hdkf.expand(b"AES-GCM file content encryption", &mut key)
-            .unwrap();
+        hdkf.expand(b"AES-GCM file content encryption", &mut key)?;
 
         Ok(key.to_vec())
     }

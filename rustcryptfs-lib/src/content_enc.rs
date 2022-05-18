@@ -2,6 +2,8 @@ use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AeadInPlace, AesGc
 use cipher::consts::{U16, U32};
 use hkdf::Hkdf;
 
+use crate::error::{Result, DecryptError};
+
 type Aes256Gcm = AesGcm<Aes256, U16>;
 
 pub struct ContentEnc {
@@ -27,7 +29,7 @@ impl ContentEnc {
         block: &[u8],
         block_number: u64,
         file_id: Option<&[u8]>,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>> {
         // TODO NOT BOX
         if block.len() == 0 {
             return Ok(block.into());
@@ -38,7 +40,7 @@ impl ContentEnc {
         }
 
         if block.len() < self.iv_len {
-            return Err(anyhow::Error::msg("Block is too short"));
+            return Err(DecryptError::BlockTooShort().into());
         }
 
         let nonce = &block[..self.iv_len];
@@ -46,7 +48,7 @@ impl ContentEnc {
         let ciphertext = &block[self.iv_len..block.len() - self.iv_len];
 
         if nonce.iter().all(|f| *f == 0) {
-            return Err(anyhow::Error::msg("all-zero nonce"));
+            return Err(DecryptError::AllZeroNonce().into());
         }
 
         let mut buf = Vec::from(ciphertext);
@@ -63,8 +65,7 @@ impl ContentEnc {
             &aad,
             &mut buf,
             GenericArray::from_slice(tag),
-        )
-        .unwrap();
+        )?;
 
         return Ok(buf.to_vec());
     }

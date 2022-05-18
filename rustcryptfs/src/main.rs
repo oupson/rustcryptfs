@@ -6,16 +6,11 @@ use std::{
 
 use anyhow::Context;
 use clap::Parser;
-use filename::FilenameDecoder;
-
-use crate::content_enc::ContentEnc;
 
 use args::{DecryptCommand, LsCommand};
+use rustcryptfs_lib::{config::{self, CryptConf}, filename::FilenameDecoder, content_enc::ContentEnc};
 
 mod args;
-mod config;
-mod content_enc;
-mod filename;
 
 fn main() -> anyhow::Result<()> {
     let args = args::Args::parse();
@@ -37,10 +32,10 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
 
     let content = fs::read_to_string(config_path)?;
 
-    let conf: config::CryptConf =
+    let conf: CryptConf =
         serde_json::from_str(&content).context("Failed to decode configuration")?;
 
-    let master_key = conf.get_master_key(c.password.as_ref().unwrap().as_bytes())?;
+    let master_key = conf.get_master_key(c.password.as_ref().unwrap().as_bytes()).context("Failed to get master key")?;
 
     let filename_decoder = FilenameDecoder::new(&master_key)?;
 
