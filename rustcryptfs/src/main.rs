@@ -6,7 +6,7 @@ use std::{
 
 use clap::Parser;
 
-use args::{DecryptCommand, LsCommand};
+use args::{DecryptCommand, LsCommand, MountCommand};
 use rustcryptfs_lib::GocryptFs;
 
 mod args;
@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
     match &args.command {
         args::Commands::Decrypt(c) => decrypt_file(c),
         args::Commands::Ls(c) => ls(c),
+        args::Commands::Mount(c) => mount(c),
     }
 }
 
@@ -101,4 +102,19 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
     stdout.flush()?;
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn mount(mount: &MountCommand) -> anyhow::Result<()> {
+    use rustcryptfs_linux::EncryptedFs;
+
+    let fs = EncryptedFs::new(&mount.path);
+
+    fs.mount(&mount.mountpoint);
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn mount(mount: &MountCommand) -> anyhow::Result<()> {
+    unimplemented!()
 }
