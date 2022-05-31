@@ -10,3 +10,4 @@ fuser = "0.11"
 log = "0.4"
 rustcryptfs-lib = { path = "../rustcryptfs-lib" }
 thiserror = "1.0"
+serde_json = "1.0"
