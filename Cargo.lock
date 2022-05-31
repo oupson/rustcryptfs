@@ -513,6 +513,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustcryptfs-linux"
+version = "0.1.0"
+
+[[package]]
 name = "ryu"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
