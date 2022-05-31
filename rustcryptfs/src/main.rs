@@ -13,6 +13,7 @@ use rustcryptfs_lib::{config::{self, CryptConf}, filename::FilenameDecoder, cont
 mod args;
 
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
     let args = args::Args::parse();
     log::debug!("{:?}", args);
 
