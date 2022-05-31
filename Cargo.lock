@@ -558,6 +558,7 @@ dependencies = [
  "fuser",
  "log",
  "rustcryptfs-lib",
+ "serde_json",
  "thiserror",
 ]
 

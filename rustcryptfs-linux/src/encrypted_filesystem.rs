@@ -1,20 +1,36 @@
-use std::path::Path;
+use std::{fs, path::Path};
 
 use fuser::Filesystem;
-use rustcryptfs_lib::config::CryptConf;
+use rustcryptfs_lib::{config::CryptConf, filename::FilenameDecoder};
 
-pub struct EncryptedFs {}
+use crate::error::Result;
+
+pub struct EncryptedFs {
+    master_key: Vec<u8>,
+    filename_decoder: FilenameDecoder,
+}
 
 impl EncryptedFs {
-    pub fn new<P>(path: P) -> Self
+    pub fn new<P>(path: P, password: &str) -> Result<Self>
     where
         P: AsRef<Path>,
     {
-        todo!()
-    }
+        let path = path.as_ref();
 
-    pub fn new_from_config(config: &CryptConf) -> Self {
-        Self {}
+        let conf_path = path.join("gocryptfs.conf");
+
+        let content = fs::read_to_string(conf_path)?;
+
+        let conf: CryptConf = serde_json::from_str(&content)?;
+
+        let master_key = conf.get_master_key(password.as_bytes())?;
+
+        let filename_decoder = FilenameDecoder::new(&master_key)?;
+
+        Ok(Self {
+            master_key,
+            filename_decoder,
+        })
     }
 
     pub fn mount<P>(self, mountpoint: P)

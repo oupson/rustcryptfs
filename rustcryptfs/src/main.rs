@@ -108,7 +108,7 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     use rustcryptfs_linux::EncryptedFs;
 
-    let fs = EncryptedFs::new(&mount.path);
+    let fs = EncryptedFs::new(&mount.path, mount.password.as_ref().unwrap())?;
 
     fs.mount(&mount.mountpoint);
     Ok(())
