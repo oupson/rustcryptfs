@@ -7,8 +7,12 @@ use std::{
 use anyhow::Context;
 use clap::Parser;
 
-use args::{DecryptCommand, LsCommand};
-use rustcryptfs_lib::{config::{self, CryptConf}, filename::FilenameDecoder, content_enc::ContentEnc};
+use args::{DecryptCommand, LsCommand, MountCommand};
+use rustcryptfs_lib::{
+    config::{self, CryptConf},
+    content_enc::ContentEnc,
+    filename::FilenameDecoder,
+};
 
 mod args;
 
@@ -20,6 +24,7 @@ fn main() -> anyhow::Result<()> {
     match &args.command {
         args::Commands::Decrypt(c) => decrypt_file(c),
         args::Commands::Ls(c) => ls(c),
+        args::Commands::Mount(c) => mount(c),
     }
 }
 
@@ -36,7 +41,9 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
     let conf: CryptConf =
         serde_json::from_str(&content).context("Failed to decode configuration")?;
 
-    let master_key = conf.get_master_key(c.password.as_ref().unwrap().as_bytes()).context("Failed to get master key")?;
+    let master_key = conf
+        .get_master_key(c.password.as_ref().unwrap().as_bytes())
+        .context("Failed to get master key")?;
 
     let filename_decoder = FilenameDecoder::new(&master_key)?;
 
@@ -55,7 +62,8 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
         {
             if filename.starts_with("gocryptfs.longname.") {
                 if !filename.ends_with(".name") {
-                    let filename = std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))?;
+                    let filename =
+                        std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))?;
                     if let Ok(res) = dir_decoder.decode_filename(&filename) {
                         println!("{}", res);
                     }
@@ -114,4 +122,19 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
     stdout.flush()?;
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn mount(mount: &MountCommand) -> anyhow::Result<()> {
+    use rustcryptfs_linux::EncryptedFs;
+
+    let fs = EncryptedFs::new(&mount.path);
+
+    fs.mount(&mount.mountpoint);
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn mount(mount: &MountCommand) -> anyhow::Result<()> {
+    unimplemented!()
 }
