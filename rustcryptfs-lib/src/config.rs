@@ -1,3 +1,5 @@
+//! Utilities to read gocryptfs config.
+
 use std::collections::HashSet;
 
 use aes_gcm::{
@@ -7,8 +9,9 @@ use aes_gcm::{
 };
 use hkdf::Hkdf;
 
-use crate::error::{Result, FilenameDecryptError, ScryptError};
+use crate::error::{FilenameDecryptError, Result, ScryptError};
 
+/// An enum that contain all the feature flag a gocryptfs config can have.
 #[derive(serde::Deserialize, Debug, PartialEq, Eq, Hash)]
 pub enum FeatureFlag {
     /// FlagPlaintextNames indicates that filenames are unencrypted.
@@ -53,7 +56,7 @@ pub struct CryptConf {
     #[serde(rename = "EncryptedKey")]
     encrypted_key: String,
     #[serde(rename = "ScryptObject")]
-    pub scrypt_object: ScryptObject,
+    scrypt_object: ScryptObject,
     #[serde(rename = "Version")]
     version: u8,
     #[serde(rename = "FeatureFlags")]
@@ -61,7 +64,12 @@ pub struct CryptConf {
 }
 
 impl CryptConf {
-    pub fn get_master_key(&self, password: &[u8]) -> Result<Vec<u8>> {
+    /// Get the masterkey from configuration.
+    ///
+    /// See gocryptfs documentation about [master key](https://nuetzlich.net/gocryptfs/forward_mode_crypto/#master-key-storage).
+    ///
+    /// ![TODO NAME THIS IMAGE](https://nuetzlich.net/gocryptfs/img/master-key.svg)
+    pub fn get_master_key(&self, password: &[u8]) -> Result<[u8; 32]> {
         let block = base64::decode(&self.encrypted_key)?;
         let key = self.scrypt_object.get_hkdf_key(password)?;
 
@@ -69,7 +77,7 @@ impl CryptConf {
         let tag = &block[block.len() - 16..];
         let ciphertext = &block[16..block.len() - 16];
 
-        let mut buf = Vec::from(ciphertext);
+        let mut buf: [u8; 32] = ciphertext.try_into().expect("TODO");
 
         let aes = AesGcm::<Aes256, cipher::consts::U16>::new(Key::from_slice(&key));
 
@@ -85,6 +93,28 @@ impl CryptConf {
 
     pub fn have_feature_flag(&self, flag: &FeatureFlag) -> bool {
         self.feature_flags.contains(flag)
+    }
+
+    /// Get the gocryptfs encrypted directory creator.
+    pub fn creator(&self) -> &str {
+        self.creator.as_ref()
+    }
+
+    /// Get the gocryptfs.conf encrypted key.
+    pub fn encrypted_key(&self) -> &str {
+        self.encrypted_key.as_ref()
+    }
+
+    pub fn scrypt_object(&self) -> &ScryptObject {
+        &self.scrypt_object
+    }
+
+    pub fn version(&self) -> u8 {
+        self.version
+    }
+
+    pub fn feature_flags(&self) -> &HashSet<FeatureFlag> {
+        &self.feature_flags
     }
 }
 
@@ -103,17 +133,19 @@ pub struct ScryptObject {
 }
 
 impl ScryptObject {
-    pub fn get_hkdf_key(&self, password: &[u8]) -> std::result::Result<Vec<u8>, FilenameDecryptError> {
+    fn get_hkdf_key(&self, password: &[u8]) -> std::result::Result<Vec<u8>, FilenameDecryptError> {
         let mut key = [0u8; 32];
 
-        let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p).map_err(|e| ScryptError::from(e))?;
+        let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p)
+            .map_err(|e| ScryptError::from(e))?;
 
         scrypt::scrypt(
             password,
             &base64::decode(&self.salt).unwrap(),
             &params,
             &mut key,
-        ).map_err(|e| ScryptError::from(e))?;
+        )
+        .map_err(|e| ScryptError::from(e))?;
 
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &key);
         hdkf.expand(b"AES-GCM file content encryption", &mut key)?;

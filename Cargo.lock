@@ -507,6 +507,7 @@ dependencies = [
  "hkdf",
  "scrypt",
  "serde",
+ "serde_json",
  "sha2",
  "thiserror",
 ]

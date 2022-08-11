@@ -21,9 +21,9 @@ pub(crate) struct DecryptCommand {
     /// The file to decrypt
     pub(crate) file_path : String,
 
-    /// Path to the gocryptfs.conf
-    #[clap(short('c'), long)]
-    pub(crate) gocryptfs_conf_path : Option<String>,
+    /// Path to the gocryptfs directory
+    #[clap(short('g'), long)]
+    pub(crate) gocryptfs_path : Option<String>,
 
     /// The password
     #[clap(short, long)]
@@ -35,9 +35,9 @@ pub(crate) struct LsCommand {
     /// The directory
     pub(crate) folder_path : String,
 
-    /// Path to the gocryptfs.conf
-    #[clap(short('c'), long)]
-    pub(crate) gocryptfs_conf_path : Option<String>,
+    /// Path to the gocryptfs directory
+    #[clap(short('g'), long)]
+    pub(crate) gocryptfs_path : Option<String>,
 
     /// The password
     #[clap(short, long)]

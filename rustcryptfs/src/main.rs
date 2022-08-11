@@ -1,14 +1,13 @@
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{BufWriter, Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
-use anyhow::Context;
 use clap::Parser;
 
 use args::{DecryptCommand, LsCommand};
-use rustcryptfs_lib::{config::{self, CryptConf}, filename::FilenameDecoder, content_enc::ContentEnc};
+use rustcryptfs_lib::GocryptFs;
 
 mod args;
 
@@ -25,20 +24,16 @@ fn main() -> anyhow::Result<()> {
 
 fn ls(c: &LsCommand) -> anyhow::Result<()> {
     let folder_path = Path::new(&c.folder_path);
-    let config_path = c
-        .gocryptfs_conf_path
-        .as_ref()
-        .map(|p| PathBuf::from(p))
-        .unwrap_or_else(|| folder_path.join("gocryptfs.conf"));
 
-    let content = fs::read_to_string(config_path)?;
+    let fs = GocryptFs::open(
+        c.gocryptfs_path
+            .as_ref()
+            .map(|p| Path::new(p))
+            .unwrap_or(folder_path),
+        c.password.as_ref().expect("Please input a password"),
+    )?;
 
-    let conf: CryptConf =
-        serde_json::from_str(&content).context("Failed to decode configuration")?;
-
-    let master_key = conf.get_master_key(c.password.as_ref().unwrap().as_bytes()).context("Failed to get master key")?;
-
-    let filename_decoder = FilenameDecoder::new(&master_key)?;
+    let filename_decoder = fs.filename_decoder();
 
     let iv = std::fs::read(folder_path.join("gocryptfs.diriv"))?;
 
@@ -48,20 +43,17 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
         let filename = dir.file_name();
         let filename = filename.to_str().unwrap();
 
-        if filename != "."
-            && filename != ".."
-            && filename != "gocryptfs.conf"
-            && filename != "gocryptfs.diriv"
-        {
+        if filename != "gocryptfs.conf" && filename != "gocryptfs.diriv" {
             if filename.starts_with("gocryptfs.longname.") {
                 if !filename.ends_with(".name") {
-                    let filename = std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))?;
-                    if let Ok(res) = dir_decoder.decode_filename(&filename) {
+                    let filename =
+                        std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))?;
+                    if let Ok(res) = dir_decoder.decode_filename(filename) {
                         println!("{}", res);
                     }
                 }
             } else {
-                if let Ok(res) = dir_decoder.decode_filename(&filename) {
+                if let Ok(res) = dir_decoder.decode_filename(filename) {
                     println!("{}", res);
                 }
             };
@@ -73,22 +65,17 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
 
 fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
     let file_path = Path::new(&c.file_path);
-    let config_path = c
-        .gocryptfs_conf_path
-        .as_ref()
-        .map(|p| PathBuf::from(p))
-        .unwrap_or_else(|| file_path.parent().unwrap().join("gocryptfs.conf"));
-
-    let content = fs::read_to_string(config_path)?;
-
-    let conf: config::CryptConf =
-        serde_json::from_str(&content).context("Failed to decode configuration")?;
+    let fs = GocryptFs::open(
+        c.gocryptfs_path
+            .as_ref()
+            .map(|p| Path::new(p))
+            .unwrap_or_else(|| file_path.parent().unwrap()),
+        c.password.as_ref().expect("Please input a password"),
+    )?;
 
     let mut file = File::open(file_path).unwrap();
 
-    let master_key = conf.get_master_key(c.password.as_ref().unwrap().as_bytes())?;
-
-    let enc = ContentEnc::new(&master_key, 16);
+    let enc = fs.content_decoder();
 
     let mut buf = [0u8; 18];
     let n = file.read(&mut buf)?;
