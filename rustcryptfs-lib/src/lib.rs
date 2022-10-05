@@ -45,7 +45,7 @@ impl GocryptFs {
         })
     }
 
-    pub fn filename_decoder(&self) -> &FilenameDecoder {
+    pub fn filename_decoder<'s> (&'s self) -> &'s FilenameDecoder {
         &self.filename_decoder
     }
 
