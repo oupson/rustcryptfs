@@ -55,7 +55,7 @@ impl From<String> for EncodedFilename {
 
             Self::LongFilename(LongFilename {
                 filename: format!(
-                    "gocryptfs.longname.{}.name",
+                    "gocryptfs.longname.{}",
                     base64::encode_config(hasher.finalize(), base64::URL_SAFE_NO_PAD)
                 ),
                 filename_content: filename,
