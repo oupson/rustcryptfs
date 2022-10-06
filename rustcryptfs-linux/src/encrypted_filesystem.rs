@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fs::{File, FileType as StdFileType},
-    io::{Read, Seek},
+    io::{Read, Seek, SeekFrom},
     ops::Add,
     os::unix::prelude::{FileTypeExt, MetadataExt, OsStrExt, PermissionsExt},
     path::{Path, PathBuf},
@@ -264,7 +264,7 @@ impl Filesystem for EncryptedFs {
         ino: u64,
         _fh: u64,
         offset: i64,
-        _size: u32,
+        size: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
@@ -277,18 +277,49 @@ impl Filesystem for EncryptedFs {
             let n = file.read(&mut buf).unwrap();
             let id = if n < 18 { None } else { Some(&buf[2..]) };
 
-            let block_index = offset as u64 / 4096;
+            let mut block_index = offset as u64 / 4096;
+
+            let mut buffer = Vec::with_capacity(size as usize);
+
+            let mut rem = size as usize;
 
             let mut buf = [0u8; 4096 + 32];
 
-            file.seek(std::io::SeekFrom::Start(18 + block_index * (4096 + 32)))
+            file.seek(SeekFrom::Start(18 + block_index * (4096 + 32)))
                 .unwrap();
 
-            let n = file.read(&mut buf).unwrap();
+            {
+                let n = file.read(&mut buf).unwrap();
 
-            let res = decoder.decrypt_block(&buf[..n], block_index, id).unwrap();
+                let res = decoder.decrypt_block(&buf[..n], block_index, id).unwrap();
 
-            reply.data(&res);
+                let seek = (offset as u64 - block_index * 4096) as usize;
+                buffer.extend_from_slice(&res[seek..]);
+
+                block_index += 1;
+
+                rem -= res.len() - seek;
+            }
+
+            while rem > 0 {
+                let n = file.read(&mut buf).unwrap();
+
+                if n == 0 {
+                    break;
+                }
+
+                let res = decoder.decrypt_block(&buf[..n], block_index, id).unwrap();
+
+                let size = res.len().min(rem);
+
+                buffer.extend_from_slice(&res[..size]);
+
+                block_index += 1;
+
+                rem -= size;
+            }
+
+            reply.data(&buffer);
         } else {
             reply.error(libc::ENOENT)
         }
