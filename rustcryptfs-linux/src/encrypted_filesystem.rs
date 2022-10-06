@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
+    fs::{File, FileType as StdFileType},
+    io::{Read, Seek},
     ops::Add,
     os::unix::prelude::{FileTypeExt, MetadataExt, OsStrExt, PermissionsExt},
     path::{Path, PathBuf},
@@ -254,6 +256,44 @@ impl Filesystem for EncryptedFs {
             }
 
             reply.ok()
+        } else {
+            reply.error(libc::ENOENT)
+        }
+    }
+
+    fn read(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        _size: u32,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+        reply: fuser::ReplyData,
+    ) {
+        if let Some(file_path) = &self.get_path(ino) {
+            log::debug!("read {:?}", file_path);
+
+            let mut file = File::open(file_path).unwrap();
+            let decoder = self.fs.content_decoder();
+
+            let mut buf = [0u8; 18];
+            let n = file.read(&mut buf).unwrap();
+            let id = if n < 18 { None } else { Some(&buf[2..]) };
+
+            let block_index = offset as u64 / 4096;
+
+            let mut buf = [0u8; 4096 + 32];
+
+            file.seek(std::io::SeekFrom::Start(18 + block_index * (4096 + 32)))
+                .unwrap();
+
+            let n = file.read(&mut buf).unwrap();
+
+            let res = decoder.decrypt_block(&buf[..n], block_index, id).unwrap();
+
+            reply.data(&res);
         } else {
             reply.error(libc::ENOENT)
         }
