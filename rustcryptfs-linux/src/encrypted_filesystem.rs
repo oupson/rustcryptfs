@@ -202,11 +202,31 @@ impl Filesystem for EncryptedFs {
         mut reply: fuser::ReplyDirectory,
     ) {
         if let Some(folder_path) = &self.get_path(ino) {
-            log::debug!("folder_path :{:?}", folder_path);
-
             let iv = std::fs::read(folder_path.join("gocryptfs.diriv")).unwrap();
 
             let dir_decoder = self.fs.filename_decoder().get_decoder_for_dir(&iv);
+
+            if offset == 0 {
+                let ino_parent = if ino == FUSE_ROOT_ID {
+                    FUSE_ROOT_ID
+                } else {
+                    let parent = folder_path.parent().expect("Failed to get parent");
+                    self.inode_cache
+                        .iter()
+                        .find_map(|(ino, p)| if p == parent { Some(*ino) } else { None })
+                        .expect("Parent inode not found")
+                };
+
+                if !reply.add(ino, 1, FileType::Directory, ".") {
+                    if reply.add(ino_parent, 2, FileType::Directory, "..") {
+                        reply.ok();
+                        return;
+                    }
+                } else {
+                    reply.ok();
+                    return;
+                }
+            }
 
             for (index, (meta, encrypted_name, name)) in std::fs::read_dir(folder_path)
                 .unwrap()
@@ -223,7 +243,7 @@ impl Filesystem for EncryptedFs {
 
                 let buffer_full: bool = reply.add(
                     inode,
-                    offset + index as i64 + 1,
+                    offset + index as i64 + 1 + 2,
                     file_type,
                     OsStr::from_bytes(name.as_bytes()),
                 );
