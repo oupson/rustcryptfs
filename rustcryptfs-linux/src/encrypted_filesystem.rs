@@ -19,7 +19,6 @@ type InodeCache = BTreeMap<u64, PathBuf>;
 pub struct EncryptedFs {
     fs: GocryptFs,
     inode_cache: InodeCache,
-    file_handle: AtomicU64,
 }
 
 impl EncryptedFs {
@@ -37,11 +36,7 @@ impl EncryptedFs {
         let mut inode_cache = BTreeMap::new();
         inode_cache.insert(FUSE_ROOT_ID, path.to_path_buf());
 
-        Ok(Self {
-            fs,
-            inode_cache,
-            file_handle: AtomicU64::new(0),
-        })
+        Ok(Self { fs, inode_cache })
     }
 
     pub fn mount<P>(self, mountpoint: P)
@@ -196,17 +191,6 @@ impl Filesystem for EncryptedFs {
         } else {
             reply.error(libc::ENOENT)
         }
-    }
-
-    fn opendir(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        ino: u64,
-        _flags: i32,
-        reply: fuser::ReplyOpen,
-    ) {
-        let fh = self.file_handle.fetch_add(1, Ordering::SeqCst);
-        reply.opened(fh, 0);
     }
 
     fn readdir(
