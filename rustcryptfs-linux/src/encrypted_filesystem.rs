@@ -10,7 +10,7 @@ use std::{
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
-use rustcryptfs_lib::GocryptFs;
+use rustcryptfs_lib::{content_enc::ContentEnc, GocryptFs};
 
 use crate::{
     error::Result,
@@ -49,17 +49,6 @@ impl EncryptedFs {
         fuser::mount2(self, mountpoint, &[]).unwrap();
     }
 
-    fn get_real_size(size: u64) -> u64 {
-        if size == 0 {
-            0
-        } else {
-            let x = (size - 50) / 4128;
-
-            let y = (size - 50) - x * 4128;
-            x * 4096 + y
-        }
-    }
-
     fn get_file_type(file_type: StdFileType) -> FileType {
         if file_type.is_file() {
             FileType::RegularFile
@@ -93,7 +82,7 @@ impl EncryptedFs {
         let file_type = Self::get_file_type(meta.file_type());
 
         let file_size = if meta.is_file() {
-            EncryptedFs::get_real_size(meta.size())
+            ContentEnc::get_real_size(meta.size())
         } else {
             meta.size()
         };

@@ -69,4 +69,33 @@ impl ContentEnc {
 
         return Ok(buf.to_vec());
     }
+
+    pub fn get_real_size(encrypted_size: u64) -> u64 {
+        if encrypted_size == 0 {
+            0
+        } else {
+            let x = (encrypted_size - 50) / 4128;
+
+            let y = (encrypted_size - 50) - x * 4128;
+            x * 4096 + y
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::ContentEnc;
+
+    #[test]
+    fn test_get_real_size() {
+        assert_eq!(0, ContentEnc::get_real_size(0));
+
+        for real_size in 1..4096 * 4 + 1 {
+            let nbr_full_blocks = real_size / 4096;
+            let encrypted_size =
+                18 + nbr_full_blocks * (4096 + 32) + real_size - nbr_full_blocks * 4096 + 32;
+
+            assert_eq!(real_size, ContentEnc::get_real_size(encrypted_size));
+        }
+    }
 }
