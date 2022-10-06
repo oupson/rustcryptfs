@@ -60,9 +60,14 @@ impl EncryptedFs {
     }
 
     fn get_real_size(size: u64) -> u64 {
-        let x = ((size as f64 - 48.0) / 4128.0).floor() as u64;
+        if size == 0 {
+            0
+        } else {
+            let x = (size - 50) / 4128;
 
-        x * 4096 + size - 48 - x * 4096
+            let y = (size - 50) - x * 4128;
+            x * 4096 + y
+        }
     }
 
     fn get_file_type(file_type: StdFileType) -> FileType {
