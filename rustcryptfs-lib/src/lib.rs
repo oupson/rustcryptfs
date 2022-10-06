@@ -1,4 +1,4 @@
-//! A library to write gocryptfs compatible programs
+//! A library to write gocryptfs compatible programs.
 
 use std::{fs::File, path::Path};
 
@@ -45,10 +45,12 @@ impl GocryptFs {
         })
     }
 
-    pub fn filename_decoder<'s> (&'s self) -> &'s FilenameDecoder {
+    /// Get the [`filename decoder`](struct@FilenameDecoder) attached to this GocryptFs.
+    pub fn filename_decoder<'s>(&'s self) -> &'s FilenameDecoder {
         &self.filename_decoder
     }
 
+    /// Get the [`content decoder`](struct@ContentEnc) attached to this GocryptFs.
     pub fn content_decoder(&self) -> &ContentEnc {
         &self.content_decoder
     }
