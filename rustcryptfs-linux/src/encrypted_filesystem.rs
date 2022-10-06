@@ -12,11 +12,12 @@ use std::{
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 use rustcryptfs_lib::GocryptFs;
 
-use crate::error::Result;
+use crate::{
+    error::Result,
+    inode_cache::{InodeCache, InodeCacheExt},
+};
 
 const BLOCK_SIZE: u64 = 4096;
-
-type InodeCache = BTreeMap<u64, PathBuf>;
 
 pub struct EncryptedFs {
     fs: GocryptFs,
@@ -46,13 +47,6 @@ impl EncryptedFs {
         P: AsRef<Path>,
     {
         fuser::mount2(self, mountpoint, &[]).unwrap();
-    }
-
-    fn get_path(&self, ino: u64) -> Option<PathBuf> {
-        // TODO CHECK PERM
-
-        // TODO AVOID CLONE
-        self.inode_cache.get(&ino).map(|p| p.clone())
     }
 
     fn get_real_size(size: u64) -> u64 {
@@ -86,6 +80,10 @@ impl EncryptedFs {
         }
     }
 
+    fn get_path(&self, ino: u64) -> Option<&PathBuf> {
+        self.inode_cache.get_path(ino)
+    }
+
     fn get_attr<P>(path: P, ino: u64) -> FileAttr
     where
         P: AsRef<Path>,
@@ -116,27 +114,6 @@ impl EncryptedFs {
             rdev: 0,
             blksize: BLOCK_SIZE as u32,
             flags: 0,
-        }
-    }
-}
-
-trait InodeCacheExt {
-    fn get_or_insert_inode(&mut self, file_path: PathBuf) -> (u64, PathBuf);
-}
-
-impl InodeCacheExt for InodeCache {
-    // TODO Try to avoid clone
-    fn get_or_insert_inode(&mut self, file_path: PathBuf) -> (u64, PathBuf) {
-        if let Some((ino, path)) = {
-            self.iter()
-                .find_map(|(i, p)| if p.eq(&file_path) { Some((i, p)) } else { None })
-        } {
-            (*ino, path.clone())
-        } else {
-            let ino = self.len() as u64 + 1;
-            self.insert(ino, file_path);
-
-            (ino, self.get(&ino).unwrap().clone())
         }
     }
 }
@@ -200,7 +177,7 @@ impl Filesystem for EncryptedFs {
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        if let Some(folder_path) = &self.get_path(ino) {
+        if let Some(folder_path) = &self.inode_cache.get_path(ino).cloned() {
             let iv = std::fs::read(folder_path.join("gocryptfs.diriv")).unwrap();
 
             let dir_decoder = self.fs.filename_decoder().get_decoder_for_dir(&iv);
