@@ -143,7 +143,6 @@ impl InodeCacheExt for InodeCache {
 
 impl Filesystem for EncryptedFs {
     fn access(&mut self, _req: &fuser::Request<'_>, ino: u64, mask: i32, reply: fuser::ReplyEmpty) {
-        log::debug!("access, ino : {}, mask : {}", ino, mask);
         if let Some(path) = self.get_path(ino) {
             reply.ok()
         } else {
@@ -152,9 +151,7 @@ impl Filesystem for EncryptedFs {
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
-        log::debug!("getattr, ino : {}", ino);
         if let Some(path) = self.get_path(ino) {
-            log::debug!("access, path = {:?}", path);
             reply.attr(&Duration::new(0, 0), &Self::get_attr(path, ino))
         } else {
             reply.error(libc::ENOENT)
@@ -273,8 +270,6 @@ impl Filesystem for EncryptedFs {
         reply: fuser::ReplyData,
     ) {
         if let Some(file_path) = &self.get_path(ino) {
-            log::debug!("read {:?}", file_path);
-
             let mut file = File::open(file_path).unwrap();
             let decoder = self.fs.content_decoder();
 
