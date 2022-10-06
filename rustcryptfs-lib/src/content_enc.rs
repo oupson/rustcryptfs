@@ -1,17 +1,21 @@
+//! Utilities for file encryption.
+
 use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AeadInPlace, AesGcm, NewAead};
 use cipher::consts::{U16, U32};
 use hkdf::Hkdf;
 
-use crate::error::{Result, DecryptError};
+use crate::error::{DecryptError, Result};
 
 type Aes256Gcm = AesGcm<Aes256, U16>;
 
+/// ContentEnc implement all methods related to file encryption.
 pub struct ContentEnc {
     key: GenericArray<u8, U32>,
     iv_len: usize,
 }
 
 impl ContentEnc {
+    /// Init a new ContentEnc from the master key and the iv len.
     pub fn new(master_key: &[u8], iv_len: u8) -> Self {
         let mut key = [0u8; 32];
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &master_key);
@@ -24,6 +28,7 @@ impl ContentEnc {
         }
     }
 
+    /// Decrypt a encrypted block of len (iv_len + decrypted_block_size + iv_len), with the block number and the file id.
     pub fn decrypt_block(
         &self,
         block: &[u8],
@@ -70,6 +75,7 @@ impl ContentEnc {
         return Ok(buf.to_vec());
     }
 
+    /// Return the decrypted size of a file, based on the encrypted size.
     pub fn get_real_size(encrypted_size: u64) -> u64 {
         if encrypted_size == 0 {
             0
