@@ -1,11 +1,10 @@
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    fs::FileType as StdFileType,
+    ops::Add,
     os::unix::prelude::{FileTypeExt, MetadataExt, OsStrExt, PermissionsExt},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime},
+    time::{Duration, UNIX_EPOCH},
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
@@ -98,21 +97,27 @@ impl EncryptedFs {
 
         let file_type = Self::get_file_type(meta.file_type());
 
+        let file_size = if meta.is_file() {
+            EncryptedFs::get_real_size(meta.size())
+        } else {
+            meta.size()
+        };
+
         FileAttr {
             ino,
-            size: EncryptedFs::get_real_size(meta.size()),
-            blocks: BLOCK_SIZE / meta.size(),
+            size: file_size,
+            blocks: (file_size + BLOCK_SIZE - 1) / BLOCK_SIZE,
             atime: meta.accessed().unwrap(),
             mtime: meta.modified().unwrap(),
-            ctime: SystemTime::now(), //SystemTime::from(meta.ctime()),
-            crtime: SystemTime::now(),
+            ctime: UNIX_EPOCH.add(Duration::new(meta.ctime() as u64, 0)),
+            crtime: UNIX_EPOCH.add(Duration::new(meta.ctime() as u64, 0)),
             kind: file_type,
             perm: meta.permissions().mode() as u16,
             nlink: meta.nlink() as u32,
             uid: meta.uid(),
             gid: meta.gid(),
-            rdev: meta.rdev() as u32,
-            blksize: meta.blksize() as u32,
+            rdev: 0,
+            blksize: BLOCK_SIZE as u32,
             flags: 0,
         }
     }
