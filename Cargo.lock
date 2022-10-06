@@ -521,6 +521,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49b3de9ec5dc0a3417da371aab17d729997c15010e7fd24ff707773a33bddb64"
 
 [[package]]
+name = "rpassword"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26b763cb66df1c928432cc35053f8bd4cec3335d8559fc16010017d16b3c1680"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "rustcryptfs"
 version = "0.0.1"
 dependencies = [
@@ -528,6 +538,7 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "rpassword",
  "rustcryptfs-lib",
  "rustcryptfs-linux",
  "serde",

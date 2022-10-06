@@ -26,12 +26,18 @@ fn main() -> anyhow::Result<()> {
 fn ls(c: &LsCommand) -> anyhow::Result<()> {
     let folder_path = Path::new(&c.folder_path);
 
+    let password = if let Some(password) = &c.password {
+        password.clone()
+    } else {
+        rpassword::prompt_password("Your password: ")?
+    };
+
     let fs = GocryptFs::open(
         c.gocryptfs_path
             .as_ref()
             .map(|p| Path::new(p))
             .unwrap_or(folder_path),
-        c.password.as_ref().expect("Please input a password"),
+        &password,
     )?;
 
     let filename_decoder = fs.filename_decoder();
@@ -66,12 +72,19 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
 
 fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
     let file_path = Path::new(&c.file_path);
+
+    let password = if let Some(password) = &c.password {
+        password.clone()
+    } else {
+        rpassword::prompt_password("Your password: ")?
+    };
+
     let fs = GocryptFs::open(
         c.gocryptfs_path
             .as_ref()
             .map(|p| Path::new(p))
             .unwrap_or_else(|| file_path.parent().unwrap()),
-        c.password.as_ref().expect("Please input a password"),
+        &password,
     )?;
 
     let mut file = File::open(file_path).unwrap();
@@ -108,7 +121,13 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     use rustcryptfs_linux::EncryptedFs;
 
-    let fs = EncryptedFs::new(&mount.path, mount.password.as_ref().unwrap())?;
+    let password = if let Some(password) = &mount.password {
+        password.clone()
+    } else {
+        rpassword::prompt_password("Your password: ")?
+    };
+
+    let fs = EncryptedFs::new(&mount.path, &password)?;
 
     fs.mount(&mount.mountpoint);
     Ok(())
