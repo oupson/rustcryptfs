@@ -570,7 +570,6 @@ dependencies = [
  "libc",
  "log",
  "rustcryptfs-lib",
- "serde_json",
  "thiserror",
 ]
 
