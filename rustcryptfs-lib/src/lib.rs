@@ -2,11 +2,11 @@
 
 use std::{fs::File, io::Read, path::Path};
 
-use content_enc::ContentEnc;
+use content::ContentEnc;
 use filename::FilenameCipher;
 
 pub mod config;
-pub mod content_enc;
+pub mod content;
 pub mod error;
 pub mod filename;
 

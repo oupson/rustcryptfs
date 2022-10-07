@@ -10,7 +10,7 @@ use std::{
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
-use rustcryptfs_lib::{content_enc::ContentEnc, GocryptFs};
+use rustcryptfs_lib::{content::ContentEnc, GocryptFs};
 
 use crate::{
     error::Result,
