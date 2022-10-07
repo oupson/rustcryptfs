@@ -133,7 +133,7 @@ impl Filesystem for EncryptedFs {
     ) {
         if let Some(parent) = &self.get_path(parent) {
             let iv = std::fs::read(parent.join("gocryptfs.diriv")).unwrap();
-            let dir_decoder = self.fs.filename_decoder().get_decoder_for_dir(&iv);
+            let dir_decoder = self.fs.filename_decoder().get_cipher_for_dir(&iv);
 
             let encrypted_name = dir_decoder
                 .encrypt_filename(&name.to_string_lossy())
@@ -169,7 +169,7 @@ impl Filesystem for EncryptedFs {
         if let Some(folder_path) = &self.inode_cache.get_path(ino).cloned() {
             let iv = std::fs::read(folder_path.join("gocryptfs.diriv")).unwrap();
 
-            let dir_decoder = self.fs.filename_decoder().get_decoder_for_dir(&iv);
+            let dir_decoder = self.fs.filename_decoder().get_cipher_for_dir(&iv);
 
             if offset == 0 {
                 let ino_parent = if ino == FUSE_ROOT_ID {
@@ -295,7 +295,7 @@ impl Filesystem for EncryptedFs {
 fn extract_name(
     dir: std::fs::DirEntry,
     folder_path: &PathBuf,
-    dir_decoder: &rustcryptfs_lib::filename::DirFilenameDecoder,
+    dir_decoder: &rustcryptfs_lib::filename::DirFilenameCipher,
 ) -> Option<(std::fs::Metadata, String, String)> {
     let filename = dir.file_name();
     let filename = filename.to_str().unwrap();

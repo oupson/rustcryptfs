@@ -44,7 +44,7 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
 
     let iv = std::fs::read(folder_path.join("gocryptfs.diriv"))?;
 
-    let dir_decoder = filename_decoder.get_decoder_for_dir(&iv);
+    let dir_decoder = filename_decoder.get_cipher_for_dir(&iv);
 
     for dir in std::fs::read_dir(folder_path)?.flat_map(|e| e.ok()) {
         let filename = dir.file_name();

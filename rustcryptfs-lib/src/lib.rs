@@ -3,7 +3,7 @@
 use std::{fs::File, path::Path};
 
 use content_enc::ContentEnc;
-use filename::FilenameDecoder;
+use filename::FilenameCipher;
 
 pub mod config;
 pub mod content_enc;
@@ -12,7 +12,7 @@ pub mod filename;
 
 /// A GocryptFs encrypted directory
 pub struct GocryptFs {
-    filename_decoder: FilenameDecoder,
+    filename_decoder: FilenameCipher,
     content_decoder: ContentEnc,
 }
 
@@ -46,7 +46,7 @@ impl GocryptFs {
     }
 
     /// Get the [`filename decoder`](struct@FilenameDecoder) attached to this GocryptFs.
-    pub fn filename_decoder<'s>(&'s self) -> &'s FilenameDecoder {
+    pub fn filename_decoder<'s>(&'s self) -> &'s FilenameCipher {
         &self.filename_decoder
     }
 
