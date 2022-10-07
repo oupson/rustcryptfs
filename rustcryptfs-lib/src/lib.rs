@@ -1,6 +1,6 @@
 //! A library to write gocryptfs compatible programs.
 
-use std::{fs::File, path::Path};
+use std::{fs::File, io::Read, path::Path};
 
 use content_enc::ContentEnc;
 use filename::FilenameCipher;
@@ -26,17 +26,25 @@ impl GocryptFs {
     {
         let base_path = encrypted_dir_path.as_ref();
 
-        let config = {
-            let mut config_file =
-                File::open(base_path.join("gocryptfs.conf")).expect("failed to get config");
+        let mut config_file =
+            File::open(base_path.join("gocryptfs.conf")).expect("failed to get config");
 
-            serde_json::from_reader::<_, config::CryptConf>(&mut config_file)
-                .expect("failed to parse config")
-        };
+        Self::load_from_reader(&mut config_file, password.as_bytes())
+    }
 
-        let master_key = config.get_master_key(password.as_bytes())?;
+    /// Load a gocryptfs from the config.
+    ///
+    /// reader_config must be a reader of a valid `gocryptfs.conf`.
+    pub fn load_from_reader<R>(reader_config: &mut R, password: &[u8]) -> error::Result<Self>
+    where
+        R: Read,
+    {
+        let config = serde_json::from_reader::<_, config::CryptConf>(reader_config)
+            .expect("failed to parse config");
 
-        let filename_decoder = FilenameDecoder::new(&master_key)?;
+        let master_key = config.get_master_key(password)?;
+
+        let filename_decoder = FilenameCipher::new(&master_key)?;
         let content_decoder = ContentEnc::new(&master_key, 16); // TODO IV LEN
 
         Ok(Self {
