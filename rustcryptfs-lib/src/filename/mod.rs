@@ -7,8 +7,10 @@ use crate::error::FilenameDecryptError;
 
 pub(crate) type EmeCipher = DynamicEme<Aes256>;
 
+mod dir_filename_decoder;
 mod filename_encoded;
 
+pub use dir_filename_decoder::*;
 pub use filename_encoded::*;
 
 // TODO RENAME
@@ -29,52 +31,7 @@ impl FilenameDecoder {
 
     pub fn get_decoder_for_dir<'a, 'b>(&'a self, iv: &'b [u8]) -> DirFilenameDecoder<'a, 'b> {
         let iv = Iv::<EmeCipher>::from_slice(iv);
-        DirFilenameDecoder {
-            filename_key: &self.filename_key,
-            iv,
-        }
-    }
-}
-
-// TODO RENAME
-pub struct DirFilenameDecoder<'a, 'b> {
-    filename_key: &'a Key<EmeCipher>,
-    iv: &'b Iv<EmeCipher>,
-}
-
-impl<'a, 'b> DirFilenameDecoder<'a, 'b> {
-    pub fn decode_filename<S>(&self, name: S) -> Result<String, FilenameDecryptError>
-    where
-        S: IntoDecodable,
-    {
-        let cipher = EmeCipher::new(self.filename_key, self.iv);
-
-        let mut filename = base64::decode_config(name.to_decodable(), base64::URL_SAFE_NO_PAD)?;
-        let filename_decoded = cipher
-            .decrypt_padded_mut::<Pkcs7>(&mut filename)
-            .map_err(|_| FilenameDecryptError::DecryptError())?;
-
-        Ok(String::from_utf8_lossy(filename_decoded).to_string())
-    }
-
-    pub fn encrypt_filename(
-        &self,
-        plain_text_name: &str,
-    ) -> Result<EncodedFilename, FilenameDecryptError> {
-        let mut cipher = EmeCipher::new(self.filename_key, self.iv);
-        let mut res = [0u8; 2048];
-
-        let filename_encrypted = cipher
-            .encrypt_padded_inout_mut::<Pkcs7>(
-                InOutBufReserved::from_slices(plain_text_name.as_bytes(), &mut res).unwrap(),
-            )
-            .map_err(|_| FilenameDecryptError::DecryptError())?; // TODO RENAME ERROR
-
-        // TODO LONG FILENAME
-
-        let filename = base64::encode_config(filename_encrypted, base64::URL_SAFE_NO_PAD);
-
-        Ok(filename.into())
+        DirFilenameDecoder::new(&self.filename_key, iv)
     }
 }
 
