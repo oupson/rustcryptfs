@@ -35,7 +35,7 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
     let fs = GocryptFs::open(
         c.gocryptfs_path
             .as_ref()
-            .map(|p| Path::new(p))
+            .map(Path::new)
             .unwrap_or(folder_path),
         &password,
     )?;
@@ -59,15 +59,13 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
                         println!("{}", res);
                     }
                 }
-            } else {
-                if let Ok(res) = dir_decoder.decode_filename(filename) {
-                    println!("{}", res);
-                }
-            };
+            } else if let Ok(res) = dir_decoder.decode_filename(filename) {
+                println!("{}", res);
+            }
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
@@ -82,7 +80,7 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
     let fs = GocryptFs::open(
         c.gocryptfs_path
             .as_ref()
-            .map(|p| Path::new(p))
+            .map(Path::new)
             .unwrap_or_else(|| file_path.parent().unwrap()),
         &password,
     )?;
@@ -106,7 +104,7 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
 
         stdout.write_all(&res)?;
 
-        if res.len() == 0 {
+        if res.is_empty() {
             break;
         }
 
