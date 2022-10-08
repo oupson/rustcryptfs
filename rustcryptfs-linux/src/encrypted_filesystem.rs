@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fs::{File, FileType as StdFileType},
-    io::{Read, Seek, SeekFrom},
+    io::{Error as IoError, Read, Result as IoResult, Seek, SeekFrom},
     ops::Add,
     os::unix::prelude::{FileTypeExt, MetadataExt, OsStrExt, PermissionsExt},
     path::{Path, PathBuf},
@@ -13,9 +13,22 @@ use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 use rustcryptfs_lib::{content::ContentEnc, GocryptFs};
 
 use crate::{
-    error::Result,
+    error::{ErrorExt, Result},
     inode_cache::{InodeCache, InodeCacheExt},
 };
+
+trait OptionExt<R> {
+    fn enoent(self) -> IoResult<R>;
+}
+
+impl<R> OptionExt<R> for Option<R> {
+    fn enoent(self) -> IoResult<R> {
+        match self {
+            Some(r) => Ok(r),
+            None => Err(IoError::from_raw_os_error(libc::ENOENT)),
+        }
+    }
+}
 
 const BLOCK_SIZE: u64 = 4096;
 
@@ -42,11 +55,11 @@ impl EncryptedFs {
         Ok(Self { fs, inode_cache })
     }
 
-    pub fn mount<P>(self, mountpoint: P)
+    pub fn mount<P>(self, mountpoint: P) -> std::io::Result<()>
     where
         P: AsRef<Path>,
     {
-        fuser::mount2(self, mountpoint, &[]).unwrap();
+        fuser::mount2(self, mountpoint, &[])
     }
 
     fn get_file_type(file_type: StdFileType) -> FileType {
@@ -73,11 +86,11 @@ impl EncryptedFs {
         self.inode_cache.get_path(ino)
     }
 
-    fn get_attr<P>(path: P, ino: u64) -> FileAttr
+    fn get_attr<P>(path: P, ino: u64) -> std::io::Result<FileAttr>
     where
         P: AsRef<Path>,
     {
-        let meta = std::fs::metadata(&path).unwrap();
+        let meta = std::fs::metadata(&path)?;
 
         let file_type = Self::get_file_type(meta.file_type());
 
@@ -87,12 +100,12 @@ impl EncryptedFs {
             meta.size()
         };
 
-        FileAttr {
+        Ok(FileAttr {
             ino,
             size: file_size,
             blocks: (file_size + BLOCK_SIZE - 1) / BLOCK_SIZE,
-            atime: meta.accessed().unwrap(),
-            mtime: meta.modified().unwrap(),
+            atime: meta.accessed()?,
+            mtime: meta.modified()?,
             ctime: UNIX_EPOCH.add(Duration::new(meta.ctime() as u64, 0)),
             crtime: UNIX_EPOCH.add(Duration::new(meta.ctime() as u64, 0)),
             kind: file_type,
@@ -103,13 +116,170 @@ impl EncryptedFs {
             rdev: 0,
             blksize: BLOCK_SIZE as u32,
             flags: 0,
+        })
+    }
+
+    fn lookup_impl(
+        &mut self,
+        parent: u64,
+        name: &std::ffi::OsStr,
+    ) -> rustcryptfs_lib::error::Result<(Duration, FileAttr, u64)> {
+        let parent = self.get_path(parent).enoent()?;
+        let iv = std::fs::read(parent.join("gocryptfs.diriv"))?;
+        let dir_decoder = self.fs.filename_decoder().get_cipher_for_dir(&iv);
+
+        let encrypted_name = dir_decoder.encrypt_filename(&name.to_string_lossy())?;
+
+        let encrypted_name = match encrypted_name {
+            rustcryptfs_lib::filename::EncodedFilename::ShortFilename(s) => s,
+            rustcryptfs_lib::filename::EncodedFilename::LongFilename(l) => l.filename,
+        };
+
+        let file_path = parent.join(encrypted_name);
+
+        if file_path.exists() {
+            let (ino, file_path) = self.inode_cache.get_or_insert_inode(file_path);
+
+            Ok((Duration::new(0, 0), Self::get_attr(file_path, ino)?, 0))
+        } else {
+            Err(IoError::from_raw_os_error(libc::ENOENT).into())
         }
+    }
+
+    fn read_dir_impl(
+        &mut self,
+        ino: u64,
+        offset: i64,
+        reply: &mut fuser::ReplyDirectory,
+    ) -> rustcryptfs_lib::error::Result<()> {
+        let folder_path = &self.inode_cache.get_path(ino).enoent()?.clone();
+        let iv = std::fs::read(folder_path.join("gocryptfs.diriv"))?;
+
+        let dir_decoder = self.fs.filename_decoder().get_cipher_for_dir(&iv);
+
+        if offset == 0 {
+            let ino_parent = if ino == FUSE_ROOT_ID {
+                FUSE_ROOT_ID
+            } else {
+                let parent = folder_path.parent().enoent()?;
+                self.inode_cache
+                    .iter()
+                    .find_map(|(ino, p)| if p == parent { Some(*ino) } else { None })
+                    .enoent()?
+            };
+
+            if !reply.add(ino, 1, FileType::Directory, ".") {
+                if reply.add(ino_parent, 2, FileType::Directory, "..") {
+                    return Ok(());
+                }
+            } else {
+                return Ok(());
+            }
+        }
+
+        for (index, (meta, encrypted_name, name)) in std::fs::read_dir(folder_path)?
+            .flat_map(|e| e.ok())
+            .flat_map(|dir| match extract_name(&dir, folder_path, &dir_decoder) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!(
+                        "Failed to extract name of entry {:?} : {}",
+                        dir.file_name(),
+                        e
+                    );
+                    None
+                }
+            })
+            .skip(offset as usize)
+            .enumerate()
+        {
+            let (inode, _) = self
+                .inode_cache
+                .get_or_insert_inode(folder_path.join(&encrypted_name));
+
+            let file_type = Self::get_file_type(meta.file_type());
+
+            let buffer_full: bool = reply.add(
+                inode,
+                offset + index as i64 + 1 + 2,
+                file_type,
+                OsStr::from_bytes(name.as_bytes()),
+            );
+
+            if buffer_full {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_impl(
+        &mut self,
+        ino: u64,
+        offset: i64,
+        size: usize,
+    ) -> rustcryptfs_lib::error::Result<Vec<u8>> {
+        let file_path = self.get_path(ino).enoent()?;
+        let mut file = File::open(file_path)?;
+        let decoder = self.fs.content_decoder();
+
+        let mut buf = [0u8; 18];
+        let n = file.read(&mut buf)?;
+        let id = if n < 18 { None } else { Some(&buf[2..]) };
+
+        let mut block_index = offset as u64 / 4096;
+
+        let mut buffer = Vec::with_capacity(size);
+
+        let mut rem = size;
+
+        let mut buf = [0u8; 4096 + 32];
+
+        file.seek(SeekFrom::Start(18 + block_index * (4096 + 32)))?;
+
+        {
+            let n = file.read(&mut buf)?;
+
+            let res = decoder.decrypt_block(&buf[..n], block_index, id)?;
+
+            let seek = (offset as u64 - block_index * 4096) as usize;
+            buffer.extend_from_slice(&res[seek..]);
+
+            block_index += 1;
+
+            rem -= res.len() - seek;
+        }
+
+        while rem > 0 {
+            let n = file.read(&mut buf)?;
+
+            if n == 0 {
+                break;
+            }
+
+            let res = decoder.decrypt_block(&buf[..n], block_index, id)?;
+
+            let size = res.len().min(rem);
+
+            buffer.extend_from_slice(&res[..size]);
+
+            block_index += 1;
+
+            rem -= size;
+        }
+        Ok(buffer)
     }
 }
 
 impl Filesystem for EncryptedFs {
-    fn access(&mut self, _req: &fuser::Request<'_>, ino: u64, mask: i32, reply: fuser::ReplyEmpty) {
-        if let Some(path) = self.get_path(ino) {
+    fn access(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        _mask: i32,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(_path) = self.get_path(ino) {
             reply.ok()
         } else {
             reply.error(libc::ENOENT)
@@ -118,7 +288,10 @@ impl Filesystem for EncryptedFs {
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         if let Some(path) = self.get_path(ino) {
-            reply.attr(&Duration::new(0, 0), &Self::get_attr(path, ino))
+            match Self::get_attr(path, ino) {
+                Ok(attr) => reply.attr(&Duration::new(0, 0), &attr),
+                Err(e) => reply.error(e.raw_os_error().unwrap()),
+            }
         } else {
             reply.error(libc::ENOENT)
         }
@@ -131,30 +304,12 @@ impl Filesystem for EncryptedFs {
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
-        if let Some(parent) = &self.get_path(parent) {
-            let iv = std::fs::read(parent.join("gocryptfs.diriv")).unwrap();
-            let dir_decoder = self.fs.filename_decoder().get_cipher_for_dir(&iv);
-
-            let encrypted_name = dir_decoder
-                .encrypt_filename(&name.to_string_lossy())
-                .unwrap();
-
-            let encrypted_name = match encrypted_name {
-                rustcryptfs_lib::filename::EncodedFilename::ShortFilename(s) => s,
-                rustcryptfs_lib::filename::EncodedFilename::LongFilename(l) => l.filename,
-            };
-
-            let file_path = parent.join(encrypted_name);
-
-            if file_path.exists() {
-                let (ino, file_path) = self.inode_cache.get_or_insert_inode(file_path);
-
-                reply.entry(&Duration::new(0, 0), &Self::get_attr(file_path, ino), 0)
-            } else {
-                reply.error(libc::ENOENT)
+        match self.lookup_impl(parent, name) {
+            Ok((ttl, attr, generation)) => reply.entry(&ttl, &attr, generation),
+            Err(e) => {
+                log::error!("lookup : {}", e);
+                reply.error(e.to_raw_code())
             }
-        } else {
-            reply.error(libc::ENOENT)
         }
     }
 
@@ -166,61 +321,12 @@ impl Filesystem for EncryptedFs {
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        if let Some(folder_path) = &self.inode_cache.get_path(ino).cloned() {
-            let iv = std::fs::read(folder_path.join("gocryptfs.diriv")).unwrap();
-
-            let dir_decoder = self.fs.filename_decoder().get_cipher_for_dir(&iv);
-
-            if offset == 0 {
-                let ino_parent = if ino == FUSE_ROOT_ID {
-                    FUSE_ROOT_ID
-                } else {
-                    let parent = folder_path.parent().expect("Failed to get parent");
-                    self.inode_cache
-                        .iter()
-                        .find_map(|(ino, p)| if p == parent { Some(*ino) } else { None })
-                        .expect("Parent inode not found")
-                };
-
-                if !reply.add(ino, 1, FileType::Directory, ".") {
-                    if reply.add(ino_parent, 2, FileType::Directory, "..") {
-                        reply.ok();
-                        return;
-                    }
-                } else {
-                    reply.ok();
-                    return;
-                }
+        match self.read_dir_impl(ino, offset, &mut reply) {
+            Ok(()) => reply.ok(),
+            Err(e) => {
+                log::error!("readdir : {}", e);
+                reply.error(e.to_raw_code())
             }
-
-            for (index, (meta, encrypted_name, name)) in std::fs::read_dir(folder_path)
-                .unwrap()
-                .flat_map(|e| e.ok())
-                .flat_map(|dir| extract_name(dir, folder_path, &dir_decoder))
-                .skip(offset as usize)
-                .enumerate()
-            {
-                let (inode, _) = self
-                    .inode_cache
-                    .get_or_insert_inode(folder_path.join(&encrypted_name));
-
-                let file_type = Self::get_file_type(meta.file_type());
-
-                let buffer_full: bool = reply.add(
-                    inode,
-                    offset + index as i64 + 1 + 2,
-                    file_type,
-                    OsStr::from_bytes(name.as_bytes()),
-                );
-
-                if buffer_full {
-                    break;
-                }
-            }
-
-            reply.ok()
-        } else {
-            reply.error(libc::ENOENT)
         }
     }
 
@@ -235,90 +341,42 @@ impl Filesystem for EncryptedFs {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(file_path) = &self.get_path(ino) {
-            let mut file = File::open(file_path).unwrap();
-            let decoder = self.fs.content_decoder();
-
-            let mut buf = [0u8; 18];
-            let n = file.read(&mut buf).unwrap();
-            let id = if n < 18 { None } else { Some(&buf[2..]) };
-
-            let mut block_index = offset as u64 / 4096;
-
-            let mut buffer = Vec::with_capacity(size as usize);
-
-            let mut rem = size as usize;
-
-            let mut buf = [0u8; 4096 + 32];
-
-            file.seek(SeekFrom::Start(18 + block_index * (4096 + 32)))
-                .unwrap();
-
-            {
-                let n = file.read(&mut buf).unwrap();
-
-                let res = decoder.decrypt_block(&buf[..n], block_index, id).unwrap();
-
-                let seek = (offset as u64 - block_index * 4096) as usize;
-                buffer.extend_from_slice(&res[seek..]);
-
-                block_index += 1;
-
-                rem -= res.len() - seek;
+        match self.read_impl(ino, offset, size as usize) {
+            Ok(data) => reply.data(&data),
+            Err(e) => {
+                log::error!("read : {}", e);
+                reply.error(e.to_raw_code())
             }
-
-            while rem > 0 {
-                let n = file.read(&mut buf).unwrap();
-
-                if n == 0 {
-                    break;
-                }
-
-                let res = decoder.decrypt_block(&buf[..n], block_index, id).unwrap();
-
-                let size = res.len().min(rem);
-
-                buffer.extend_from_slice(&res[..size]);
-
-                block_index += 1;
-
-                rem -= size;
-            }
-
-            reply.data(&buffer);
-        } else {
-            reply.error(libc::ENOENT)
         }
     }
 }
 
 fn extract_name(
-    dir: std::fs::DirEntry,
-    folder_path: &PathBuf,
+    dir: &std::fs::DirEntry,
+    folder_path: &Path,
     dir_decoder: &rustcryptfs_lib::filename::DirFilenameCipher,
-) -> Option<(std::fs::Metadata, String, String)> {
+) -> rustcryptfs_lib::error::Result<Option<(std::fs::Metadata, String, String)>> {
     let filename = dir.file_name();
-    let filename = filename.to_str().unwrap();
+    let filename = filename.to_string_lossy();
     if filename != "gocryptfs.conf" && filename != "gocryptfs.diriv" {
         if filename.starts_with("gocryptfs.longname.") {
             if !filename.ends_with(".name") {
                 let filename =
-                    std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))
-                        .unwrap();
-                dir_decoder
-                    .decode_filename(filename.as_str())
-                    .map(|n| (dir.metadata().unwrap(), filename, n))
-                    .ok()
+                    std::fs::read_to_string(folder_path.join(format!("{}.name", filename)))?;
+                let decrypted_filename = dir_decoder.decode_filename(filename.as_str())?;
+                Ok(Some((dir.metadata()?, filename, decrypted_filename)))
             } else {
-                None
+                Ok(None)
             }
         } else {
-            dir_decoder
-                .decode_filename(filename)
-                .map(|n| (dir.metadata().unwrap(), filename.to_string(), n))
-                .ok()
+            let decrypted_filename = dir_decoder.decode_filename(&*filename)?;
+            Ok(Some((
+                dir.metadata()?,
+                filename.to_string(),
+                decrypted_filename,
+            )))
         }
     } else {
-        None
+        Ok(None)
     }
 }

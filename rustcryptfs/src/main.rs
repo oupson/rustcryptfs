@@ -119,6 +119,7 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
 
 #[cfg(target_os = "linux")]
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
+    use anyhow::Context;
     use rustcryptfs_linux::EncryptedFs;
 
     let password = if let Some(password) = &mount.password {
@@ -129,7 +130,8 @@ fn mount(mount: &MountCommand) -> anyhow::Result<()> {
 
     let fs = EncryptedFs::new(&mount.path, &password)?;
 
-    fs.mount(&mount.mountpoint);
+    fs.mount(&mount.mountpoint)
+        .context("Failed to run fuse fs")?;
     Ok(())
 }
 
