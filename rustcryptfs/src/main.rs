@@ -118,7 +118,7 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
 #[cfg(target_os = "linux")]
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     use anyhow::Context;
-    use rustcryptfs_linux::EncryptedFs;
+    use rustcryptfs_fuse::EncryptedFs;
 
     let password = if let Some(password) = &mount.password {
         password.clone()

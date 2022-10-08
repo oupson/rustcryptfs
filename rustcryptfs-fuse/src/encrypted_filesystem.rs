@@ -130,9 +130,9 @@ impl EncryptedFs {
 
         let encrypted_name = dir_decoder.encrypt_filename(&name.to_string_lossy())?;
 
-        let encrypted_name = match encrypted_name {
+        let encrypted_name = match &encrypted_name {
             rustcryptfs_lib::filename::EncodedFilename::ShortFilename(s) => s,
-            rustcryptfs_lib::filename::EncodedFilename::LongFilename(l) => l.filename,
+            rustcryptfs_lib::filename::EncodedFilename::LongFilename(l) => l.filename(),
         };
 
         let file_path = parent.join(encrypted_name);
