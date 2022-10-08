@@ -2,6 +2,9 @@ use cipher::{block_padding::Pkcs7, Iv, Key, KeyIvInit};
 
 use super::{EmeCipher, EncodedFilename, FilenameCipherError, IntoDecodable};
 
+/// DirFilenameCipher allow you to cipher and decipher filenames in a directory.
+///
+/// TODO : document structure of a gocryptfs dir or put a link.
 pub struct DirFilenameCipher<'a, 'b> {
     filename_key: &'a Key<EmeCipher>,
     iv: &'b Iv<EmeCipher>,
@@ -12,6 +15,9 @@ impl<'a, 'b> DirFilenameCipher<'a, 'b> {
         Self { filename_key, iv }
     }
 
+    /// Decipher a filename.
+    ///
+    /// Name muste be the name of the file if it is a short filename, or the content of the long .name file otherwise.
     pub fn decode_filename<S>(&self, name: S) -> Result<String, FilenameCipherError>
     where
         S: IntoDecodable,
@@ -26,6 +32,7 @@ impl<'a, 'b> DirFilenameCipher<'a, 'b> {
         Ok(String::from_utf8_lossy(filename_decoded).to_string())
     }
 
+    /// Cipher a filename.
     pub fn encrypt_filename(
         &self,
         plain_text_name: &str,

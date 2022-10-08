@@ -1,3 +1,5 @@
+//! Utilities for filename encryption.
+//!
 use aes::Aes256;
 use cipher::{Iv, Key};
 use eme_mode::DynamicEme;
@@ -6,18 +8,20 @@ use hkdf::Hkdf;
 pub(crate) type EmeCipher = DynamicEme<Aes256>;
 
 mod dir_filename_cipher;
-mod filename_encoded;
 mod error;
+mod filename_encoded;
 
 pub use dir_filename_cipher::*;
-pub use filename_encoded::*;
 pub use error::*;
+pub use filename_encoded::*;
 
+/// FilenameCipher allow you to retrieve a DirFilenameCipher, used to cipher and decipher filenames.
 pub struct FilenameCipher {
     filename_key: Key<Aes256>,
 }
 
 impl FilenameCipher {
+    /// Create a new FilenameCipher, from the master key.
     pub fn new(master_key: &[u8]) -> Result<Self, FilenameCipherError> {
         let mut key = [0u8; 32];
         let hdkf = Hkdf::<sha2::Sha256>::new(None, master_key);
@@ -28,6 +32,7 @@ impl FilenameCipher {
         })
     }
 
+    /// Get the cipher for a directory, allowing you to decipher files in this dir.
     pub fn get_cipher_for_dir<'a, 'b>(&'a self, iv: &'b [u8]) -> DirFilenameCipher<'a, 'b> {
         let iv = Iv::<EmeCipher>::from_slice(iv);
         DirFilenameCipher::new(&self.filename_key, iv)

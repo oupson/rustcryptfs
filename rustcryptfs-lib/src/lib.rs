@@ -52,7 +52,7 @@ impl GocryptFs {
         })
     }
 
-    /// Get the [`filename decoder`](struct@FilenameDecoder) attached to this GocryptFs.
+    /// Get the [`filename decoder`](struct@FilenameCipher) attached to this GocryptFs.
     pub fn filename_decoder(&self) -> &FilenameCipher {
         &self.filename_decoder
     }

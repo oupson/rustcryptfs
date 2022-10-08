@@ -1,6 +1,9 @@
 use sha2::{Digest, Sha256};
 
-/// EncodedFilename
+/// Represent an encrypted filename.
+/// 
+/// An encrypted filename can have two forms : long or short.
+/// TODO: Document
 #[derive(Debug, PartialEq, Eq)]
 pub enum EncodedFilename {
     ShortFilename(String),
@@ -9,8 +12,18 @@ pub enum EncodedFilename {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LongFilename {
-    pub filename: String,
-    pub filename_content: String,
+    filename: String,
+    filename_content: String,
+}
+
+impl LongFilename {
+    pub fn filename(&self) -> &str {
+        self.filename.as_ref()
+    }
+
+    pub fn filename_content(&self) -> &str {
+        self.filename_content.as_ref()
+    }
 }
 
 impl From<String> for EncodedFilename {

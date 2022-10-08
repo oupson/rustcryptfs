@@ -4,6 +4,7 @@ use crate::{config::ConfigError, content::ContentCipherError, filename::Filename
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An error that wrap all the errors in this lib.
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
