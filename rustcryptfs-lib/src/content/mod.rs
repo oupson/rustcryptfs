@@ -20,7 +20,7 @@ impl ContentEnc {
     /// Init a new ContentEnc from the master key and the iv len.
     pub fn new(master_key: &[u8], iv_len: u8) -> Result<Self, ContentCipherError> {
         let mut key = [0u8; 32];
-        let hdkf = Hkdf::<sha2::Sha256>::new(None, &master_key);
+        let hdkf = Hkdf::<sha2::Sha256>::new(None, master_key);
         hdkf.expand(b"AES-GCM file content encryption", &mut key)?;
 
         Ok(Self {
@@ -37,7 +37,7 @@ impl ContentEnc {
         file_id: Option<&[u8]>,
     ) -> Result<Vec<u8>, ContentCipherError> {
         // TODO NOT BOX
-        if block.len() == 0 {
+        if block.is_empty() {
             return Ok(block.into());
         }
 
@@ -46,7 +46,7 @@ impl ContentEnc {
         }
 
         if block.len() < self.iv_len {
-            return Err(ContentCipherError::BlockTooShort().into());
+            return Err(ContentCipherError::BlockTooShort());
         }
 
         let nonce = &block[..self.iv_len];
@@ -54,7 +54,7 @@ impl ContentEnc {
         let ciphertext = &block[self.iv_len..block.len() - self.iv_len];
 
         if nonce.iter().all(|f| *f == 0) {
-            return Err(ContentCipherError::AllZeroNonce().into());
+            return Err(ContentCipherError::AllZeroNonce());
         }
 
         let mut buf = Vec::from(ciphertext);
@@ -73,7 +73,7 @@ impl ContentEnc {
             GenericArray::from_slice(tag),
         )?;
 
-        return Ok(buf.to_vec());
+        Ok(buf.to_vec())
     }
 
     /// Return the decrypted size of a file, based on the encrypted size.

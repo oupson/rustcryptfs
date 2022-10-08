@@ -1,13 +1,13 @@
 use sha2::{Digest, Sha256};
 
 /// EncodedFilename
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum EncodedFilename {
     ShortFilename(String),
     LongFilename(LongFilename),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LongFilename {
     pub filename: String,
     pub filename_content: String,
@@ -33,11 +33,11 @@ impl From<String> for EncodedFilename {
 }
 
 pub trait IntoDecodable {
-    fn to_decodable<'s>(&'s self) -> &'s str;
+    fn to_decodable(&self) -> &str;
 }
 
 impl IntoDecodable for EncodedFilename {
-    fn to_decodable<'s>(&'s self) -> &'s str {
+    fn to_decodable(&self) -> &str {
         match self {
             Self::ShortFilename(s) => s.as_str(),
             Self::LongFilename(l) => l.filename_content.as_str(),
@@ -46,13 +46,13 @@ impl IntoDecodable for EncodedFilename {
 }
 
 impl IntoDecodable for String {
-    fn to_decodable<'s>(&'s self) -> &'s str {
+    fn to_decodable(&self) -> &str {
         self
     }
 }
 
 impl<'a> IntoDecodable for &'a str {
-    fn to_decodable<'s>(&'s self) -> &'s str {
+    fn to_decodable(&self) -> &str {
         self
     }
 }

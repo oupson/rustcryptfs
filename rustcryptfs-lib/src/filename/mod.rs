@@ -20,7 +20,7 @@ pub struct FilenameCipher {
 impl FilenameCipher {
     pub fn new(master_key: &[u8]) -> Result<Self, FilenameCipherError> {
         let mut key = [0u8; 32];
-        let hdkf = Hkdf::<sha2::Sha256>::new(None, &master_key);
+        let hdkf = Hkdf::<sha2::Sha256>::new(None, master_key);
         hdkf.expand(b"EME filename encryption", &mut key)?;
 
         Ok(Self {

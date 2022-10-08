@@ -86,7 +86,7 @@ impl CryptConf {
         let aes = AesGcm::<Aes256, cipher::consts::U16>::new(Key::from_slice(&key));
 
         aes.decrypt_in_place_detached(
-            GenericArray::from_slice(&nonce),
+            GenericArray::from_slice(nonce),
             &[0u8, 0, 0, 0, 0, 0, 0, 0],
             &mut buf,
             GenericArray::from_slice(tag),
@@ -141,10 +141,10 @@ impl ScryptObject {
         let mut key = [0u8; 32];
 
         let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p)
-            .map_err(|e| ScryptError::from(e))?;
+            .map_err(ScryptError::from)?;
 
         scrypt::scrypt(password, &base64::decode(&self.salt)?, &params, &mut key)
-            .map_err(|e| ScryptError::from(e))?;
+            .map_err(ScryptError::from)?;
 
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &key);
         hdkf.expand(b"AES-GCM file content encryption", &mut key)?;

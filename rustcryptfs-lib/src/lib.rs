@@ -53,7 +53,7 @@ impl GocryptFs {
     }
 
     /// Get the [`filename decoder`](struct@FilenameDecoder) attached to this GocryptFs.
-    pub fn filename_decoder<'s>(&'s self) -> &'s FilenameCipher {
+    pub fn filename_decoder(&self) -> &FilenameCipher {
         &self.filename_decoder
     }
 
