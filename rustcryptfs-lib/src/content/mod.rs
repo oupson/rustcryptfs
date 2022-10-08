@@ -4,7 +4,9 @@ use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AeadInPlace, AesGc
 use cipher::consts::{U16, U32};
 use hkdf::Hkdf;
 
-use crate::error::{DecryptError, Result};
+mod error;
+
+pub use error::*;
 
 type Aes256Gcm = AesGcm<Aes256, U16>;
 
@@ -16,16 +18,15 @@ pub struct ContentEnc {
 
 impl ContentEnc {
     /// Init a new ContentEnc from the master key and the iv len.
-    pub fn new(master_key: &[u8], iv_len: u8) -> Self {
+    pub fn new(master_key: &[u8], iv_len: u8) -> Result<Self, ContentCipherError> {
         let mut key = [0u8; 32];
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &master_key);
-        hdkf.expand(b"AES-GCM file content encryption", &mut key)
-            .unwrap();
+        hdkf.expand(b"AES-GCM file content encryption", &mut key)?;
 
-        Self {
+        Ok(Self {
             key: GenericArray::from(key),
             iv_len: iv_len as usize,
-        }
+        })
     }
 
     /// Decrypt a encrypted block of len (iv_len + decrypted_block_size + iv_len), with the block number and the file id.
@@ -34,7 +35,7 @@ impl ContentEnc {
         block: &[u8],
         block_number: u64,
         file_id: Option<&[u8]>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vec<u8>, ContentCipherError> {
         // TODO NOT BOX
         if block.len() == 0 {
             return Ok(block.into());
@@ -45,7 +46,7 @@ impl ContentEnc {
         }
 
         if block.len() < self.iv_len {
-            return Err(DecryptError::BlockTooShort().into());
+            return Err(ContentCipherError::BlockTooShort().into());
         }
 
         let nonce = &block[..self.iv_len];
@@ -53,7 +54,7 @@ impl ContentEnc {
         let ciphertext = &block[self.iv_len..block.len() - self.iv_len];
 
         if nonce.iter().all(|f| *f == 0) {
-            return Err(DecryptError::AllZeroNonce().into());
+            return Err(ContentCipherError::AllZeroNonce().into());
         }
 
         let mut buf = Vec::from(ciphertext);

@@ -9,7 +9,9 @@ use aes_gcm::{
 };
 use hkdf::Hkdf;
 
-use crate::error::{FilenameDecryptError, Result, ScryptError};
+mod error;
+
+pub use error::*;
 
 /// An enum that contain all the feature flag a gocryptfs config can have.
 #[derive(serde::Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -69,7 +71,7 @@ impl CryptConf {
     /// See gocryptfs documentation about [master key](https://nuetzlich.net/gocryptfs/forward_mode_crypto/#master-key-storage).
     ///
     /// ![TODO NAME THIS IMAGE](https://nuetzlich.net/gocryptfs/img/master-key.svg)
-    pub fn get_master_key(&self, password: &[u8]) -> Result<[u8; 32]> {
+    pub fn get_master_key(&self, password: &[u8]) -> Result<[u8; 32], ConfigError> {
         let block = base64::decode(&self.encrypted_key)?;
         let key = self.scrypt_object.get_hkdf_key(password)?;
 
@@ -77,7 +79,9 @@ impl CryptConf {
         let tag = &block[block.len() - 16..];
         let ciphertext = &block[16..block.len() - 16];
 
-        let mut buf: [u8; 32] = ciphertext.try_into().expect("TODO");
+        let mut buf: [u8; 32] = ciphertext
+            .try_into()
+            .map_err(|_| ConfigError::InvalidMasterKeyLengthError())?;
 
         let aes = AesGcm::<Aes256, cipher::consts::U16>::new(Key::from_slice(&key));
 
@@ -133,19 +137,14 @@ pub struct ScryptObject {
 }
 
 impl ScryptObject {
-    fn get_hkdf_key(&self, password: &[u8]) -> std::result::Result<Vec<u8>, FilenameDecryptError> {
+    fn get_hkdf_key(&self, password: &[u8]) -> Result<Vec<u8>, ConfigError> {
         let mut key = [0u8; 32];
 
         let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p)
             .map_err(|e| ScryptError::from(e))?;
 
-        scrypt::scrypt(
-            password,
-            &base64::decode(&self.salt).unwrap(),
-            &params,
-            &mut key,
-        )
-        .map_err(|e| ScryptError::from(e))?;
+        scrypt::scrypt(password, &base64::decode(&self.salt)?, &params, &mut key)
+            .map_err(|e| ScryptError::from(e))?;
 
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &key);
         hdkf.expand(b"AES-GCM file content encryption", &mut key)?;

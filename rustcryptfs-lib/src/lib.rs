@@ -27,7 +27,7 @@ impl GocryptFs {
         let base_path = encrypted_dir_path.as_ref();
 
         let mut config_file =
-            File::open(base_path.join("gocryptfs.conf")).expect("failed to get config");
+            File::open(base_path.join("gocryptfs.conf"))?;
 
         Self::load_from_reader(&mut config_file, password.as_bytes())
     }
@@ -39,13 +39,12 @@ impl GocryptFs {
     where
         R: Read,
     {
-        let config = serde_json::from_reader::<_, config::CryptConf>(reader_config)
-            .expect("failed to parse config");
+        let config = serde_json::from_reader::<_, config::CryptConf>(reader_config)?;
 
         let master_key = config.get_master_key(password)?;
 
         let filename_decoder = FilenameCipher::new(&master_key)?;
-        let content_decoder = ContentEnc::new(&master_key, 16); // TODO IV LEN
+        let content_decoder = ContentEnc::new(&master_key, 16)?; // TODO IV LEN
 
         Ok(Self {
             filename_decoder,

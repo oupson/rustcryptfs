@@ -3,22 +3,22 @@ use cipher::{Iv, Key};
 use eme_mode::DynamicEme;
 use hkdf::Hkdf;
 
-use crate::error::FilenameDecryptError;
-
 pub(crate) type EmeCipher = DynamicEme<Aes256>;
 
 mod dir_filename_cipher;
 mod filename_encoded;
+mod error;
 
 pub use dir_filename_cipher::*;
 pub use filename_encoded::*;
+pub use error::*;
 
 pub struct FilenameCipher {
     filename_key: Key<Aes256>,
 }
 
 impl FilenameCipher {
-    pub fn new(master_key: &[u8]) -> Result<Self, FilenameDecryptError> {
+    pub fn new(master_key: &[u8]) -> Result<Self, FilenameCipherError> {
         let mut key = [0u8; 32];
         let hdkf = Hkdf::<sha2::Sha256>::new(None, &master_key);
         hdkf.expand(b"EME filename encryption", &mut key)?;

@@ -1,7 +1,6 @@
-use crate::error::FilenameDecryptError;
-use cipher::{block_padding::Pkcs7, inout::InOutBufReserved, Iv, Key, KeyIvInit};
+use cipher::{block_padding::Pkcs7, Iv, Key, KeyIvInit};
 
-use super::{EmeCipher, EncodedFilename, IntoDecodable};
+use super::{EmeCipher, EncodedFilename, FilenameCipherError, IntoDecodable};
 
 pub struct DirFilenameCipher<'a, 'b> {
     filename_key: &'a Key<EmeCipher>,
@@ -13,7 +12,7 @@ impl<'a, 'b> DirFilenameCipher<'a, 'b> {
         Self { filename_key, iv }
     }
 
-    pub fn decode_filename<S>(&self, name: S) -> Result<String, FilenameDecryptError>
+    pub fn decode_filename<S>(&self, name: S) -> Result<String, FilenameCipherError>
     where
         S: IntoDecodable,
     {
@@ -22,7 +21,7 @@ impl<'a, 'b> DirFilenameCipher<'a, 'b> {
         let mut filename = base64::decode_config(name.to_decodable(), base64::URL_SAFE_NO_PAD)?;
         let filename_decoded = cipher
             .decrypt_padded_mut::<Pkcs7>(&mut filename)
-            .map_err(|_| FilenameDecryptError::DecryptError())?;
+            .map_err(|_| FilenameCipherError::DecryptError())?;
 
         Ok(String::from_utf8_lossy(filename_decoded).to_string())
     }
@@ -30,17 +29,13 @@ impl<'a, 'b> DirFilenameCipher<'a, 'b> {
     pub fn encrypt_filename(
         &self,
         plain_text_name: &str,
-    ) -> Result<EncodedFilename, FilenameDecryptError> {
+    ) -> Result<EncodedFilename, FilenameCipherError> {
         let mut cipher = EmeCipher::new(self.filename_key, self.iv);
         let mut res = [0u8; 2048];
 
         let filename_encrypted = cipher
-            .encrypt_padded_inout_mut::<Pkcs7>(
-                InOutBufReserved::from_slices(plain_text_name.as_bytes(), &mut res).unwrap(),
-            )
-            .map_err(|_| FilenameDecryptError::DecryptError())?; // TODO RENAME ERROR
-
-        // TODO LONG FILENAME
+            .encrypt_padded_b2b_mut::<Pkcs7>(plain_text_name.as_bytes(), &mut res)
+            .map_err(|_| FilenameCipherError::EncryptError())?;
 
         let filename = base64::encode_config(filename_encrypted, base64::URL_SAFE_NO_PAD);
 
