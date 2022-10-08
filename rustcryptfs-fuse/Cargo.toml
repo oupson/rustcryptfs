@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fuser = "0.11"
+fuser = { version = "0.11", default-features = false }
 log = "0.4"
 rustcryptfs-lib = { path = "../rustcryptfs-lib" }
 thiserror = "1.0"
