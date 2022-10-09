@@ -47,7 +47,7 @@ impl EncryptedFs {
         log::info!("Opening dir ...");
         let fs = GocryptFs::open(path, password)?;
 
-        log::info!("Done");
+        println!("Filesystem mounted and ready.");
 
         let mut inode_cache = BTreeMap::new();
         inode_cache.insert(FUSE_ROOT_ID, path.to_path_buf());
@@ -307,7 +307,7 @@ impl Filesystem for EncryptedFs {
         match self.lookup_impl(parent, name) {
             Ok((ttl, attr, generation)) => reply.entry(&ttl, &attr, generation),
             Err(e) => {
-                log::error!("lookup : {}", e);
+                log::debug!("error on lookup : {}", e);
                 reply.error(e.to_raw_code())
             }
         }
@@ -324,7 +324,7 @@ impl Filesystem for EncryptedFs {
         match self.read_dir_impl(ino, offset, &mut reply) {
             Ok(()) => reply.ok(),
             Err(e) => {
-                log::error!("readdir : {}", e);
+                log::debug!("error on readdir : {}", e);
                 reply.error(e.to_raw_code())
             }
         }

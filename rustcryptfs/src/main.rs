@@ -51,7 +51,7 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
 
     for dir in std::fs::read_dir(folder_path)?.flat_map(|e| e.ok()) {
         let filename = dir.file_name();
-        let filename = filename.to_str().unwrap();
+        let filename = filename.to_string_lossy();
 
         if filename != "gocryptfs.conf" && filename != "gocryptfs.diriv" {
             if filename.starts_with("gocryptfs.longname.") {
@@ -62,7 +62,7 @@ fn ls(c: &LsCommand) -> anyhow::Result<()> {
                         println!("{}", res);
                     }
                 }
-            } else if let Ok(res) = dir_decoder.decode_filename(filename) {
+            } else if let Ok(res) = dir_decoder.decode_filename(&*filename) {
                 println!("{}", res);
             }
         }
@@ -88,7 +88,7 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
         &password,
     )?;
 
-    let mut file = File::open(file_path).unwrap();
+    let mut file = File::open(file_path)?;
 
     let enc = fs.content_decoder();
 
