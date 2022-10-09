@@ -1,3 +1,6 @@
+#[cfg(feature = "mount")]
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -12,8 +15,12 @@ pub(crate) enum Commands {
     /// Decrypt a file
     Decrypt(DecryptCommand),
 
-    // List file contained in a directory
+    /// List file contained in a directory
     Ls(LsCommand),
+
+    #[cfg(feature = "mount")]
+    /// Mount an encrypted folder
+    Mount(MountCommand),
 }
 
 #[derive(Debug, Parser)]
@@ -42,4 +49,18 @@ pub(crate) struct LsCommand {
     /// The password
     #[clap(short, long)]
     pub(crate) password : Option<String>
+}
+
+#[cfg(feature = "mount")]
+#[derive(Debug, Parser)]
+pub(crate) struct MountCommand {
+    /// The directory
+    pub(crate) path: PathBuf,
+
+    /// The mount point
+    pub(crate) mountpoint: PathBuf,
+
+    /// The password
+    #[clap(short, long)]
+    pub(crate) password: Option<String>,
 }

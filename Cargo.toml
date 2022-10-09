@@ -1,5 +1,7 @@
 [workspace]
 members = [
     "rustcryptfs",
-    "rustcryptfs-lib"
+    "rustcryptfs-lib",
+    "rustcryptfs-fuse",
+    "rustcryptfs-mount"
 ]

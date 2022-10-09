@@ -1,49 +1,20 @@
 use thiserror::Error;
 
+use crate::{config::ConfigError, content::ContentCipherError, filename::FilenameCipherError};
+
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An error that wrap all the errors in this lib.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Failed to decrypt content")]
-    ContentDecryptError(),
-    #[error("Failed to decrypt filename")]
-    FilenameDecryptError(#[from] FilenameDecryptError),
-    #[error("Failed to decode base64")]
-    Base64Error(#[from] base64::DecodeError),
     #[error(transparent)]
-    DecodeError(#[from] DecryptError),
-}
-
-impl From<aes_gcm::Error> for Error {
-    fn from(_: aes_gcm::Error) -> Self {
-        Self::ContentDecryptError()
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum DecryptError {
-    #[error("Block is too short")]
-    BlockTooShort(),
-    #[error("all-zero nonce")]
-    AllZeroNonce(),
-}
-
-#[derive(Debug, Error)]
-pub enum FilenameDecryptError {
+    FilenameCipherError(#[from] FilenameCipherError),
     #[error(transparent)]
-    ScryptError(#[from] ScryptError),
-    #[error("Failed to decode base64")]
-    Base64Error(#[from] base64::DecodeError),
+    ContentCipherError(#[from] ContentCipherError),
     #[error(transparent)]
-    HdkfError(#[from] hkdf::InvalidLength),
-    #[error("Failed to decrypt filename")]
-    DecryptError(),
-}
-
-#[derive(Debug, Error)]
-pub enum ScryptError {
+    ConfigError(#[from] ConfigError),
     #[error(transparent)]
-    InvalidParams(#[from] scrypt::errors::InvalidParams),
+    JsonError(#[from] serde_json::Error),
     #[error(transparent)]
-    InvalidOutputLen(#[from] scrypt::errors::InvalidOutputLen),
+    IoError(#[from] std::io::Error),
 }
