@@ -6,19 +6,22 @@ use std::{
 
 use clap::Parser;
 
-use args::{DecryptCommand, LsCommand, MountCommand};
+use args::{DecryptCommand, LsCommand};
 use rustcryptfs_lib::GocryptFs;
+
+#[cfg(feature = "mount")]
+use args::MountCommand;
 
 mod args;
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = args::Args::parse();
-    log::debug!("{:?}", args);
 
     match &args.command {
         args::Commands::Decrypt(c) => decrypt_file(c),
         args::Commands::Ls(c) => ls(c),
+        #[cfg(feature = "mount")]
         args::Commands::Mount(c) => mount(c),
     }
 }
@@ -116,9 +119,9 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
+#[cfg(feature = "mount")]
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     use anyhow::Context;
-    use rustcryptfs_fuse::EncryptedFs;
 
     let password = if let Some(password) = &mount.password {
         password.clone()
@@ -126,14 +129,14 @@ fn mount(mount: &MountCommand) -> anyhow::Result<()> {
         rpassword::prompt_password("Your password: ")?
     };
 
-    let fs = EncryptedFs::new(&mount.path, &password)?;
-
-    fs.mount(&mount.mountpoint)
+    rustcryptfs_mount::mount(&mount.path, &mount.mountpoint, &password)
         .context("Failed to run fuse fs")?;
+
     Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
+#[cfg(feature = "mount")]
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     unimplemented!()
 }

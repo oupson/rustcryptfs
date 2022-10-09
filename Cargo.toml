@@ -2,5 +2,6 @@
 members = [
     "rustcryptfs",
     "rustcryptfs-lib",
-    "rustcryptfs-fuse"
+    "rustcryptfs-fuse",
+    "rustcryptfs-mount"
 ]

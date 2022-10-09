@@ -532,8 +532,8 @@ dependencies = [
  "env_logger",
  "log",
  "rpassword",
- "rustcryptfs-fuse",
  "rustcryptfs-lib",
+ "rustcryptfs-mount",
  "serde",
  "serde_json",
 ]
@@ -564,6 +564,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "rustcryptfs-mount"
+version = "0.1.0"
+dependencies = [
+ "rustcryptfs-fuse",
 ]
 
 [[package]]

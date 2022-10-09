@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["mount"]
+mount = ["rustcryptfs-mount"]
+
 [dependencies]
 anyhow = "1.0.53"
 serde = { version = "1.0.136", features = ["derive"] }
@@ -14,6 +18,4 @@ log = "0.4.17"
 rustcryptfs-lib = { path = "../rustcryptfs-lib" }
 env_logger = "0.9.0"
 rpassword = "7.0.0"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-rustcryptfs-fuse = { path = "../rustcryptfs-fuse" }
+rustcryptfs-mount = { path = "../rustcryptfs-mount", optional = true }
