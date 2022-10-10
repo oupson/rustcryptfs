@@ -9,6 +9,10 @@ An implementation of [gocryptfs](https://github.com/rfjakob/gocryptfs) in Rust.
     - [ ] read
     - [ ] write
 
+## Features
+- mount\
+    Allow to mount a virtual filesystem on linux or windows (unimplemented). This feature is no-op on other targets.
+
 ## License
 
 Licensed under either of

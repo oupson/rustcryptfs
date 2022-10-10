@@ -5,3 +5,7 @@ members = [
     "rustcryptfs-fuse",
     "rustcryptfs-mount"
 ]
+
+[profile.release]
+lto = true
+codegen-units = 1

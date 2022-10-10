@@ -10,6 +10,7 @@ use args::{DecryptCommand, LsCommand};
 use rustcryptfs_lib::GocryptFs;
 
 #[cfg(feature = "mount")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use args::MountCommand;
 
 mod args;
@@ -22,6 +23,7 @@ fn main() -> anyhow::Result<()> {
         args::Commands::Decrypt(c) => decrypt_file(c),
         args::Commands::Ls(c) => ls(c),
         #[cfg(feature = "mount")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         args::Commands::Mount(c) => mount(c),
     }
 }
@@ -135,7 +137,7 @@ fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
 #[cfg(feature = "mount")]
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
     unimplemented!()

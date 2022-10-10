@@ -19,6 +19,7 @@ pub(crate) enum Commands {
     Ls(LsCommand),
 
     #[cfg(feature = "mount")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     /// Mount an encrypted folder
     Mount(MountCommand),
 }
@@ -52,6 +53,7 @@ pub(crate) struct LsCommand {
 }
 
 #[cfg(feature = "mount")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[derive(Debug, Parser)]
 pub(crate) struct MountCommand {
     /// The directory
