@@ -46,14 +46,14 @@ mod test {
     use super::FilenameCipher;
 
     #[test]
-    fn test_encrypt() {
+    fn test_encrypt_short_name() {
         let master_key = base64::decode("9gtUW9XiiefEgEXEkbONI6rnUsd2yh5UZZLG0V8Bxgk=").unwrap();
         let dir_iv = base64::decode("6ysCeWOp2euF1x39gth8KQ==").unwrap();
 
-        let decoder = FilenameCipher::new(&master_key).expect("Failed to get file decoder");
-        let dir_decoder = decoder.get_cipher_for_dir(&dir_iv);
+        let filename_cipher = FilenameCipher::new(&master_key).expect("Failed to get file decoder");
+        let dir_cipher = filename_cipher.get_cipher_for_dir(&dir_iv);
 
-        let encoded = dir_decoder
+        let encoded = dir_cipher
             .encrypt_filename("7.mp4")
             .expect("Failed to encrypt filename");
 
@@ -64,17 +64,78 @@ mod test {
     }
 
     #[test]
-    fn test_decrypt() {
+    fn test_decrypt_short_name() {
         let master_key = base64::decode("9gtUW9XiiefEgEXEkbONI6rnUsd2yh5UZZLG0V8Bxgk=").unwrap();
         let dir_iv = base64::decode("6ysCeWOp2euF1x39gth8KQ==").unwrap();
 
-        let decoder = FilenameCipher::new(&master_key).expect("Failed to get file decoder");
-        let dir_decoder = decoder.get_cipher_for_dir(&dir_iv);
+        let filename_cipher = FilenameCipher::new(&master_key).expect("Failed to get file decoder");
+        let dir_cipher = filename_cipher.get_cipher_for_dir(&dir_iv);
 
-        let decrypted = dir_decoder
+        let decrypted = dir_cipher
             .decode_filename("vTBajRt-yCpxB7Sly0E7lQ")
             .expect("Failed to decrypt filename");
 
         assert_eq!(decrypted, "7.mp4");
+    }
+
+    #[test]
+    fn test_encrypt_long_name() {
+        let master_key = base64::decode("9gtUW9XiiefEgEXEkbONI6rnUsd2yh5UZZLG0V8Bxgk=").unwrap();
+        let dir_iv = base64::decode("6ysCeWOp2euF1x39gth8KQ==").unwrap();
+
+        let filename_cipher = FilenameCipher::new(&master_key).expect("Failed to get file decoder");
+        let dir_cipher = filename_cipher.get_cipher_for_dir(&dir_iv);
+
+        let name = dir_cipher
+            .encrypt_filename(
+                "€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€",
+            )
+            .expect("Failed to encrypt filename");
+
+        match name {
+            EncodedFilename::LongFilename(l) => {
+                assert_eq!(
+                    l.filename(),
+                    "gocryptfs.longname.Bf_foqgr7ZUrPHk6BQo4HYk_V3w0II2V9QiOIWCDDlw"
+                );
+                assert_eq!(l.filename_content(), "Z-XRQNP2Hc_fggKCpeyJX1i8N-8CSFPchvJiT-1H0aNOL-1_GK1TqmADcKFgFdH96ScIQIH-2hUN6lQ1ruv38ubFbDLzOdIjo50C7IIYK84XPZe_-AeGhkGP6kyvvZMvPYBt81PHjD69ZoHFG-ylpazmq71BKx2UrXOXj2dBkWVbZxnSGaKtx7ii8FSFwAfQZYEmMKIr03GU5MnxpP4u44USgenDCRVn-01F5uxjHfyidSqLYn8OIi-lpaw6jgNc5zbV5U-4yKmdLZ8opV7lMTtw0p6h2BQLrrLDjI_Gbgc");
+            }
+            EncodedFilename::ShortFilename(s) => {
+                panic!("This should be a long filename, got \"{}\"", s)
+            }
+        }
+    }
+
+    #[test]
+    fn test_decrypt_long_name() {
+        let master_key = base64::decode("9gtUW9XiiefEgEXEkbONI6rnUsd2yh5UZZLG0V8Bxgk=").unwrap();
+        let dir_iv = base64::decode("6ysCeWOp2euF1x39gth8KQ==").unwrap();
+
+        let filename_cipher = FilenameCipher::new(&master_key).expect("Failed to get file decoder");
+        let dir_cipher = filename_cipher.get_cipher_for_dir(&dir_iv);
+
+        let name = EncodedFilename::from("Z-XRQNP2Hc_fggKCpeyJX1i8N-8CSFPchvJiT-1H0aNOL-1_GK1TqmADcKFgFdH96ScIQIH-2hUN6lQ1ruv38ubFbDLzOdIjo50C7IIYK84XPZe_-AeGhkGP6kyvvZMvPYBt81PHjD69ZoHFG-ylpazmq71BKx2UrXOXj2dBkWVbZxnSGaKtx7ii8FSFwAfQZYEmMKIr03GU5MnxpP4u44USgenDCRVn-01F5uxjHfyidSqLYn8OIi-lpaw6jgNc5zbV5U-4yKmdLZ8opV7lMTtw0p6h2BQLrrLDjI_Gbgc".to_string());
+
+        match &name {
+            EncodedFilename::LongFilename(l) => {
+                assert_eq!(
+                    l.filename(),
+                    "gocryptfs.longname.Bf_foqgr7ZUrPHk6BQo4HYk_V3w0II2V9QiOIWCDDlw"
+                );
+                assert_eq!(l.filename_content(), "Z-XRQNP2Hc_fggKCpeyJX1i8N-8CSFPchvJiT-1H0aNOL-1_GK1TqmADcKFgFdH96ScIQIH-2hUN6lQ1ruv38ubFbDLzOdIjo50C7IIYK84XPZe_-AeGhkGP6kyvvZMvPYBt81PHjD69ZoHFG-ylpazmq71BKx2UrXOXj2dBkWVbZxnSGaKtx7ii8FSFwAfQZYEmMKIr03GU5MnxpP4u44USgenDCRVn-01F5uxjHfyidSqLYn8OIi-lpaw6jgNc5zbV5U-4yKmdLZ8opV7lMTtw0p6h2BQLrrLDjI_Gbgc");
+            }
+            EncodedFilename::ShortFilename(s) => {
+                panic!("This should be a long filename, got \"{}\"", s)
+            }
+        }
+
+        let decrypted = dir_cipher
+            .decode_filename(name)
+            .expect("Failed to decrypt filename");
+
+        assert_eq!(
+            decrypted,
+            "€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€"
+        );
     }
 }
