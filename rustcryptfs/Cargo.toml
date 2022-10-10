@@ -1,8 +1,10 @@
 [package]
 name = "rustcryptfs"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
+description = "A gocryptfs implementation in rust"
+repository = "https://github.com/oupson/rustcryptfs/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,7 +18,7 @@ serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.78"
 clap = { version = "3.1.18", features = ["derive"] }
 log = "0.4.17"
-rustcryptfs-lib = { path = "../rustcryptfs-lib" }
+rustcryptfs-lib = { path = "../rustcryptfs-lib", version = "0.1.0" }
 env_logger = "0.9.0"
 rpassword = "7.0.0"
-rustcryptfs-mount = { path = "../rustcryptfs-mount", optional = true }
+rustcryptfs-mount = { path = "../rustcryptfs-mount", optional = true, version = "0.1.0" }
