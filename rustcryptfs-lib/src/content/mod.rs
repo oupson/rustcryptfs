@@ -91,6 +91,10 @@ impl ContentEnc {
 
 #[cfg(test)]
 mod test {
+    use std::io::{Cursor, Read};
+
+    use sha2::{Sha256, Digest};
+
     use super::ContentEnc;
 
     #[test]
@@ -104,5 +108,46 @@ mod test {
 
             assert_eq!(real_size, ContentEnc::get_real_size(encrypted_size));
         }
+    }
+
+    #[test]
+    fn test_decrypt_empty_file() {
+        let content = include_bytes!(
+            concat!(env!("CARGO_MANIFEST_DIR"),
+            "/../test-data/test.bin"));
+        let master_key = base64::decode("9gtUW9XiiefEgEXEkbONI6rnUsd2yh5UZZLG0V8Bxgk=").unwrap();
+        let file_cipher = ContentEnc::new(&master_key, 16).unwrap();
+
+        let res = file_cipher.decrypt_block(&[], 1, None).expect("Failed to decrypt empty block");
+        assert_eq!(res, Vec::<u8>::new());
+
+        let mut reader= Cursor::new(content);
+        
+        let mut hasher = Sha256::new();
+
+
+        let mut buf = [0u8; 18];
+        let n = reader.read(&mut buf).unwrap();
+        let id = if n < 18 { None } else { Some(&buf[2..]) };
+    
+        let mut buf = [0u8; 4096 + 32];
+    
+        let mut block_index = 0;
+        loop {
+            let n = reader.read(&mut buf).unwrap();
+            let res = file_cipher.decrypt_block(&buf[..n], block_index, id).unwrap();
+    
+            hasher.update(&res);
+
+            if res.is_empty() {
+                break;
+            }
+    
+            block_index += 1;
+        }
+
+        let checksum = base64::encode_config(hasher.finalize(), base64::URL_SAFE);
+
+        assert_eq!(checksum, "YKLFv04l2iqHo3hyObExyj7eURrtJry2T227YQ1pcEg=");
     }
 }
