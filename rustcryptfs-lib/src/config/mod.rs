@@ -151,4 +151,24 @@ impl ScryptObject {
 
         Ok(key.to_vec())
     }
+
+    pub fn salt(&self) -> &str {
+        self.salt.as_ref()
+    }
+
+    pub fn n(&self) -> u32 {
+        self.n
+    }
+
+    pub fn r(&self) -> u32 {
+        self.r
+    }
+
+    pub fn p(&self) -> u32 {
+        self.p
+    }
+
+    pub fn key_len(&self) -> u32 {
+        self.key_len
+    }
 }
