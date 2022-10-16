@@ -1,7 +1,7 @@
 //! Utilities for file encryption.
 
 use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AeadInPlace, AesGcm, NewAead};
-use cipher::consts::{U16, U32};
+use cipher::consts::U16;
 use hkdf::Hkdf;
 
 mod error;
@@ -12,8 +12,8 @@ type Aes256Gcm = AesGcm<Aes256, U16>;
 
 /// ContentEnc implement all methods related to file encryption.
 pub struct ContentEnc {
-    key: GenericArray<u8, U32>,
     iv_len: usize,
+    cipher: Aes256Gcm,
 }
 
 impl ContentEnc {
@@ -24,56 +24,47 @@ impl ContentEnc {
         hdkf.expand(b"AES-GCM file content encryption", &mut key)?;
 
         Ok(Self {
-            key: GenericArray::from(key),
             iv_len: iv_len as usize,
+            cipher: Aes256Gcm::new(&GenericArray::from(key)),
         })
     }
 
     /// Decrypt a encrypted block of len (iv_len + decrypted_block_size + iv_len), with the block number and the file id.
-    pub fn decrypt_block(
+    /// The content of block is replaced with the plain text, in form of iv + plaintext + tag.
+    pub fn decrypt_block<'a>(
         &self,
-        block: &[u8],
+        block: &'a mut [u8],
         block_number: u64,
         file_id: Option<&[u8]>,
-    ) -> Result<Vec<u8>, ContentCipherError> {
-        // TODO NOT BOX
+    ) -> Result<&'a [u8], ContentCipherError> {
         if block.is_empty() {
-            return Ok(block.into());
-        }
-
-        if block.iter().all(|f| *f == 0) {
-            todo!("black hole")
-        }
-
-        if block.len() < self.iv_len {
+            return Ok(block);
+        } else if block.iter().all(|f| *f == 0) {
+            return Ok(&block[0..block.len() - self.iv_len * 2]);
+        } else if block.len() < self.iv_len * 2 {
             return Err(ContentCipherError::BlockTooShort());
         }
 
-        let nonce = &block[..self.iv_len];
-        let tag = &block[block.len() - self.iv_len..];
-        let ciphertext = &block[self.iv_len..block.len() - self.iv_len];
+        let (nonce, other) = block.split_at_mut(self.iv_len);
+        let (ciphertext, tag) = other.split_at_mut(other.len() - self.iv_len);
 
         if nonce.iter().all(|f| *f == 0) {
             return Err(ContentCipherError::AllZeroNonce());
         }
-
-        let mut buf = Vec::from(ciphertext);
 
         let mut aad = Vec::from(block_number.to_be_bytes());
         if let Some(file_id) = file_id {
             aad.extend(file_id);
         }
 
-        let aes = Aes256Gcm::new(&self.key);
-
-        aes.decrypt_in_place_detached(
+        self.cipher.decrypt_in_place_detached(
             GenericArray::from_slice(nonce),
             &aad,
-            &mut buf,
+            ciphertext,
             GenericArray::from_slice(tag),
         )?;
 
-        Ok(buf.to_vec())
+        Ok(ciphertext)
     }
 
     /// Return the decrypted size of a file, based on the encrypted size.
@@ -93,7 +84,7 @@ impl ContentEnc {
 mod test {
     use std::io::{Cursor, Read};
 
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     use super::ContentEnc;
 
@@ -112,37 +103,41 @@ mod test {
 
     #[test]
     fn test_decrypt_empty_file() {
-        let content = include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"),
-            "/../test-data/test.bin"));
+        let content = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../test-data/test.bin"
+        ));
         let master_key = base64::decode("9gtUW9XiiefEgEXEkbONI6rnUsd2yh5UZZLG0V8Bxgk=").unwrap();
         let file_cipher = ContentEnc::new(&master_key, 16).unwrap();
 
-        let res = file_cipher.decrypt_block(&[], 1, None).expect("Failed to decrypt empty block");
+        let res = file_cipher
+            .decrypt_block(&mut [], 1, None)
+            .expect("Failed to decrypt empty block");
         assert_eq!(res, Vec::<u8>::new());
 
-        let mut reader= Cursor::new(content);
-        
-        let mut hasher = Sha256::new();
+        let mut reader = Cursor::new(content);
 
+        let mut hasher = Sha256::new();
 
         let mut buf = [0u8; 18];
         let n = reader.read(&mut buf).unwrap();
         let id = if n < 18 { None } else { Some(&buf[2..]) };
-    
+
         let mut buf = [0u8; 4096 + 32];
-    
+
         let mut block_index = 0;
         loop {
             let n = reader.read(&mut buf).unwrap();
-            let res = file_cipher.decrypt_block(&buf[..n], block_index, id).unwrap();
-    
+            let res = file_cipher
+                .decrypt_block(&mut buf[..n], block_index, id)
+                .unwrap();
+
             hasher.update(&res);
 
             if res.is_empty() {
                 break;
             }
-    
+
             block_index += 1;
         }
 

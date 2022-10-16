@@ -105,9 +105,9 @@ fn decrypt_file(c: &DecryptCommand) -> anyhow::Result<()> {
     let mut block_index = 0;
     loop {
         let n = file.read(&mut buf)?;
-        let res = enc.decrypt_block(&buf[..n], block_index, id)?;
+        let res = enc.decrypt_block(&mut buf[..n], block_index, id)?;
 
-        stdout.write_all(&res)?;
+        stdout.write_all(res)?;
 
         if res.is_empty() {
             break;

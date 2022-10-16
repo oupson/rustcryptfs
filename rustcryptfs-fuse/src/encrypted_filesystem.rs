@@ -240,7 +240,7 @@ impl EncryptedFs {
         {
             let n = file.read(&mut buf)?;
 
-            let res = decoder.decrypt_block(&buf[..n], block_index, id)?;
+            let res = decoder.decrypt_block(&mut buf[..n], block_index, id)?;
 
             let seek = (offset as u64 - block_index * 4096) as usize;
             buffer.extend_from_slice(&res[seek..]);
@@ -257,7 +257,7 @@ impl EncryptedFs {
                 break;
             }
 
-            let res = decoder.decrypt_block(&buf[..n], block_index, id)?;
+            let res = decoder.decrypt_block(&mut buf[..n], block_index, id)?;
 
             let size = res.len().min(rem);
 
