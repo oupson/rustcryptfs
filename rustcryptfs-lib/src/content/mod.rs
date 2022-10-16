@@ -68,6 +68,7 @@ impl ContentEnc {
     }
 
     /// Return the decrypted size of a file, based on the encrypted size.
+    #[inline]
     pub fn get_real_size(encrypted_size: u64) -> u64 {
         if encrypted_size == 0 {
             0

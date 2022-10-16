@@ -22,6 +22,7 @@ trait OptionExt<R> {
 }
 
 impl<R> OptionExt<R> for Option<R> {
+    #[inline]
     fn enoent(self) -> IoResult<R> {
         match self {
             Some(r) => Ok(r),
@@ -82,6 +83,7 @@ impl EncryptedFs {
         }
     }
 
+    #[inline]
     fn get_path(&self, ino: u64) -> Option<&PathBuf> {
         self.inode_cache.get_path(ino)
     }
@@ -119,6 +121,7 @@ impl EncryptedFs {
         })
     }
 
+    #[inline]
     fn lookup_impl(
         &mut self,
         parent: u64,
@@ -146,6 +149,7 @@ impl EncryptedFs {
         }
     }
 
+    #[inline]
     fn read_dir_impl(
         &mut self,
         ino: u64,
@@ -213,6 +217,7 @@ impl EncryptedFs {
         Ok(())
     }
 
+    #[inline]
     fn read_impl(
         &mut self,
         ino: u64,
