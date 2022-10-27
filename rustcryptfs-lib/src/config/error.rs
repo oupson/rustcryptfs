@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error(transparent)]
@@ -20,6 +21,7 @@ impl From<aes_gcm::Error> for ConfigError {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Error)]
 pub enum ScryptError {
     #[error(transparent)]

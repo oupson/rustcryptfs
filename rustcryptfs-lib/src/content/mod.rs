@@ -10,14 +10,18 @@ pub use error::*;
 
 type Aes256Gcm = AesGcm<Aes256, U16>;
 
-/// ContentEnc implement all methods related to file encryption.
+/// `ContentEnc` implement all methods related to file encryption.
+#[allow(clippy::module_name_repetitions)]
 pub struct ContentEnc {
     iv_len: usize,
     cipher: Aes256Gcm,
 }
 
 impl ContentEnc {
-    /// Init a new ContentEnc from the master key and the iv len.
+    /// Init a new `ContentEnc` from the master key and the iv len.
+    /// 
+    /// # Errors
+    /// Return an error if the filename key cannot be derived from the `master_key`.
     pub fn new(master_key: &[u8], iv_len: u8) -> Result<Self, ContentCipherError> {
         let mut key = [0u8; 32];
         let hdkf = Hkdf::<sha2::Sha256>::new(None, master_key);
@@ -29,8 +33,11 @@ impl ContentEnc {
         })
     }
 
-    /// Decrypt a encrypted block of len (iv_len + decrypted_block_size + iv_len), with the block number and the file id.
+    /// Decrypt a encrypted block of len (`iv_len` + `decrypted_block_size` + `iv_len`), with the block number and the file id.
     /// The content of block is replaced with the plain text, in form of iv + plaintext + tag.
+    /// 
+    /// # Errors
+    /// Return an error if `block` is too short, or if the nonce is full of 0, or if the decrypting failed.
     pub fn decrypt_block<'a>(
         &self,
         block: &'a mut [u8],
@@ -68,6 +75,7 @@ impl ContentEnc {
     }
 
     /// Return the decrypted size of a file, based on the encrypted size.
+    #[must_use]
     #[inline]
     pub fn get_real_size(encrypted_size: u64) -> u64 {
         if encrypted_size == 0 {

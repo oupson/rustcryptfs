@@ -71,6 +71,9 @@ impl CryptConf {
     /// See gocryptfs documentation about [master key](https://nuetzlich.net/gocryptfs/forward_mode_crypto/#master-key-storage).
     ///
     /// ![TODO NAME THIS IMAGE](https://nuetzlich.net/gocryptfs/img/master-key.svg)
+    /// 
+    /// # Errors
+    /// Return an error when the master key don't have the required size or if the decrypting failed.
     pub fn get_master_key(&self, password: &[u8]) -> Result<[u8; 32], ConfigError> {
         let block = base64::decode(&self.encrypted_key)?;
         let key = self.scrypt_object.get_hkdf_key(password)?;
@@ -95,28 +98,34 @@ impl CryptConf {
         Ok(buf)
     }
 
+    #[must_use]
     pub fn have_feature_flag(&self, flag: &FeatureFlag) -> bool {
         self.feature_flags.contains(flag)
     }
 
     /// Get the gocryptfs encrypted directory creator.
+    #[must_use]
     pub fn creator(&self) -> &str {
         self.creator.as_ref()
     }
 
     /// Get the gocryptfs.conf encrypted key.
+    #[must_use]
     pub fn encrypted_key(&self) -> &str {
         self.encrypted_key.as_ref()
     }
 
+    #[must_use]
     pub fn scrypt_object(&self) -> &ScryptObject {
         &self.scrypt_object
     }
 
+    #[must_use]
     pub fn version(&self) -> u8 {
         self.version
     }
 
+    #[must_use]
     pub fn feature_flags(&self) -> &HashSet<FeatureFlag> {
         &self.feature_flags
     }
@@ -140,7 +149,7 @@ impl ScryptObject {
     fn get_hkdf_key(&self, password: &[u8]) -> Result<Vec<u8>, ConfigError> {
         let mut key = [0u8; 32];
 
-        let params = scrypt::Params::new((self.n as f64).log2() as u8, self.r, self.p)
+        let params = scrypt::Params::new(f64::from(self.n).log2() as u8, self.r, self.p)
             .map_err(ScryptError::from)?;
 
         scrypt::scrypt(password, &base64::decode(&self.salt)?, &params, &mut key)
@@ -152,22 +161,27 @@ impl ScryptObject {
         Ok(key.to_vec())
     }
 
+    #[must_use]
     pub fn salt(&self) -> &str {
         self.salt.as_ref()
     }
 
+    #[must_use]
     pub fn n(&self) -> u32 {
         self.n
     }
 
+    #[must_use]
     pub fn r(&self) -> u32 {
         self.r
     }
 
+    #[must_use]
     pub fn p(&self) -> u32 {
         self.p
     }
 
+    #[must_use]
     pub fn key_len(&self) -> u32 {
         self.key_len
     }

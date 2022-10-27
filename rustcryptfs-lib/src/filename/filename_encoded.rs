@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 
 /// Represent an encrypted filename.
-/// 
+///
 /// An encrypted filename can have two forms : long or short.
 /// TODO: Document
 #[derive(Debug, PartialEq, Eq)]
@@ -17,10 +17,12 @@ pub struct LongFilename {
 }
 
 impl LongFilename {
+    #[must_use]
     pub fn filename(&self) -> &str {
         self.filename.as_ref()
     }
 
+    #[must_use]
     pub fn filename_content(&self) -> &str {
         self.filename_content.as_ref()
     }
@@ -64,7 +66,7 @@ impl IntoDecodable for String {
     }
 }
 
-impl<'a> IntoDecodable for &'a str {
+impl IntoDecodable for &str {
     fn to_decodable(&self) -> &str {
         self
     }

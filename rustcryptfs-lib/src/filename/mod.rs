@@ -15,13 +15,17 @@ pub use dir_filename_cipher::*;
 pub use error::*;
 pub use filename_encoded::*;
 
-/// FilenameCipher allow you to retrieve a DirFilenameCipher, used to cipher and decipher filenames.
+/// `FilenameCipher` allow you to retrieve a `DirFilenameCipher`, used to cipher and decipher filenames.
+#[allow(clippy::module_name_repetitions)]
 pub struct FilenameCipher {
     filename_key: Key<Aes256>,
 }
 
 impl FilenameCipher {
-    /// Create a new FilenameCipher, from the master key.
+    /// Create a new `FilenameCipher`, from the master key.
+    ///
+    /// # Errors
+    /// Return an error if the filename key cannot be derived from the `master_key`.
     pub fn new(master_key: &[u8]) -> Result<Self, FilenameCipherError> {
         let mut key = [0u8; 32];
         let hdkf = Hkdf::<sha2::Sha256>::new(None, master_key);
@@ -33,6 +37,7 @@ impl FilenameCipher {
     }
 
     /// Get the cipher for a directory, allowing you to decipher files in this dir.
+    #[must_use]
     pub fn get_cipher_for_dir<'a, 'b>(&'a self, iv: &'b [u8]) -> DirFilenameCipher<'a, 'b> {
         let iv = Iv::<EmeCipher>::from_slice(iv);
         DirFilenameCipher::new(&self.filename_key, iv)

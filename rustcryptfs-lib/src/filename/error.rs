@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Error)]
 pub enum FilenameCipherError {
     #[error("Failed to decode base64")]
@@ -9,5 +10,5 @@ pub enum FilenameCipherError {
     #[error("Failed to decrypt filename")]
     DecryptError(),
     #[error("Failed to encrypt filename")]
-    EncryptError()
+    EncryptError(),
 }

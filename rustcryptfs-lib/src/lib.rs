@@ -10,7 +10,7 @@ pub mod content;
 pub mod error;
 pub mod filename;
 
-/// A GocryptFs encrypted directory
+/// A `GocryptFs` encrypted directory
 pub struct GocryptFs {
     filename_decoder: FilenameCipher,
     content_decoder: ContentEnc,
@@ -20,21 +20,26 @@ impl GocryptFs {
     /// Open an existing gocryptfs directory
     ///
     /// The directory must contain a valid `gocryptfs.conf`
+    ///
+    /// # Errors
+    /// Will return an error if `encrypted_dir_path` is not a valid gocryptfs encrypted directory or if the master key cannot be obtained from the `password`.
     pub fn open<P>(encrypted_dir_path: P, password: &str) -> error::Result<Self>
     where
         P: AsRef<Path>,
     {
         let base_path = encrypted_dir_path.as_ref();
 
-        let mut config_file =
-            File::open(base_path.join("gocryptfs.conf"))?;
+        let mut config_file = File::open(base_path.join("gocryptfs.conf"))?;
 
         Self::load_from_reader(&mut config_file, password.as_bytes())
     }
 
     /// Load a gocryptfs from the config.
     ///
-    /// reader_config must be a reader of a valid `gocryptfs.conf`.
+    /// `reader_config` must be a reader of a valid `gocryptfs.conf`.
+    ///
+    /// # Errors
+    /// Will return an error if `reader_config` is not a valid `gocryptfs.conf` json or if the master key cannot be obtained from the `password` and the decoded config.
     pub fn load_from_reader<R>(reader_config: &mut R, password: &[u8]) -> error::Result<Self>
     where
         R: Read,
@@ -52,12 +57,14 @@ impl GocryptFs {
         })
     }
 
-    /// Get the [`filename decoder`](struct@FilenameCipher) attached to this GocryptFs.
+    /// Get the [`filename decoder`](struct@FilenameCipher) attached to this `GocryptFs`.
+    #[must_use]
     pub fn filename_decoder(&self) -> &FilenameCipher {
         &self.filename_decoder
     }
 
-    /// Get the [`content decoder`](struct@ContentEnc) attached to this GocryptFs.
+    /// Get the [`content decoder`](struct@ContentEnc) attached to this `GocryptFs`.
+    #[must_use]
     pub fn content_decoder(&self) -> &ContentEnc {
         &self.content_decoder
     }
