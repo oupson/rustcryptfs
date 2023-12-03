@@ -1,6 +1,8 @@
 use std::collections::HashMap;
-use std::ffi::{OsString, CStr, CString};
+use std::ffi::{CStr, CString, OsString};
+use std::fs::File;
 use std::hash::{Hash, Hasher};
+use std::io::Read;
 use std::iter::Map;
 use std::path::PathBuf;
 use std::{
@@ -13,6 +15,7 @@ use libc::c_void;
 use rustcryptfs_lib::GocryptFs;
 
 use error::Result;
+use rustcryptfs_lib::filename::EncodedFilename;
 use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::Storage::ProjectedFileSystem::PRJ_PLACEHOLDER_VERSION_INFO;
 use windows_sys::Win32::System::Diagnostics::Debug::{
@@ -56,7 +59,12 @@ impl Display for WinError {
 
         let buffer = unsafe { CStr::from_ptr(buffer) };
 
-        write!(f, "Windows Error : 0x{:08X} :{}", self.0, buffer.to_string_lossy())
+        write!(
+            f,
+            "Windows Error : 0x{:08X} :{}",
+            self.0,
+            buffer.to_string_lossy()
+        )
     }
 }
 
@@ -101,7 +109,7 @@ pub struct EncryptedFs {
     fs: GocryptFs,
     filename_map: HashMap<PathBuf, PathBuf>,
     enum_map: HashMap<WinGuid, projfs::DirEnumData>,
-    base_path : PathBuf
+    base_path: PathBuf,
 }
 
 impl EncryptedFs {
@@ -115,6 +123,43 @@ impl EncryptedFs {
 
     pub(crate) fn insert_filename(&mut self, filename: PathBuf, real_path: PathBuf) {
         self.filename_map.insert(filename, real_path);
+    }
+
+    pub(crate) fn get_path(&mut self, filename: PathBuf) -> PathBuf {
+        let path = match self.retrieve_filename(&filename) {
+            Some(p) => p.to_path_buf(),
+            None => {
+                let parent = filename.parent().unwrap();
+                let name = filename.file_name().unwrap();
+                let real_parent: &Path = self.retrieve_filename(&parent).unwrap();
+
+                let mut iv = [0u8; 16];
+
+                {
+                    let mut iv_file =
+                        File::open(self.base_path.join(real_parent).join("gocryptfs.diriv"))
+                            .unwrap();
+                    iv_file.read_exact(&mut iv).unwrap();
+                }
+
+                let d = self.fs.filename_decoder().get_cipher_for_dir(&iv);
+
+                let encrypted_name = d.encrypt_filename(&name.to_string_lossy()).unwrap();
+
+                let encoded_name = match &encrypted_name {
+                    EncodedFilename::ShortFilename(s) => s,
+                    EncodedFilename::LongFilename(l) => l.filename(),
+                };
+
+                let real_path = real_parent.join(encoded_name);
+
+                self.insert_filename(filename, real_path.clone());
+
+                real_path
+            }
+        };
+
+        self.base_path.join(path)
     }
 }
 
@@ -134,7 +179,7 @@ impl EncryptedFs {
             fs,
             filename_map: Default::default(),
             enum_map: Default::default(),
-            base_path: path.to_owned()
+            base_path: path.to_owned(),
         })
     }
 

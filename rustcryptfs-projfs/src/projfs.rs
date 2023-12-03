@@ -41,41 +41,7 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
     log::trace!("start_enum_callback called for {:?}", filename);
 
-    let path = match instance_context.retrieve_filename(&filename) {
-        Some(p) => p.to_path_buf(),
-        None => {
-            let parent = filename.parent().unwrap();
-            let name = filename.file_name().unwrap();
-            let real_parent = instance_context.retrieve_filename(&parent).unwrap();
-
-            let mut iv = [0u8; 16];
-
-            {
-                let mut iv_file = File::open(real_parent.join("gocryptfs.diriv")).unwrap();
-                iv_file.read_exact(&mut iv).unwrap();
-            }
-
-            let d = instance_context
-                .fs
-                .filename_decoder()
-                .get_cipher_for_dir(&iv);
-
-            let encrypted_name = d.encrypt_filename(&name.to_string_lossy()).unwrap();
-
-            let encoded_name = match &encrypted_name {
-                EncodedFilename::ShortFilename(s) => s,
-                EncodedFilename::LongFilename(l) => l.filename(),
-            };
-
-            let real_path = real_parent.join(encoded_name);
-
-            instance_context.insert_filename(filename, real_path.clone());
-
-            real_path
-        }
-    };
-
-    let path = instance_context.base_path.join(path);
+    let path = instance_context.get_path(filename);
 
     let mut iv = [0u8; 16];
 
@@ -175,47 +141,7 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
 
     log::trace!("get_placeholder_info_callback called : {:?}", filename);
 
-    let path = match instance_context.retrieve_filename(&filename) {
-        Some(p) => instance_context.base_path.join(p.to_path_buf()),
-        None => {
-            let parent = filename.parent().unwrap();
-            let name = filename.file_name().unwrap();
-            let real_parent = instance_context.retrieve_filename(&parent).unwrap();
-
-            trace!("real parent : {:?}", real_parent);
-
-            let mut iv = [0u8; 16];
-
-            {
-                let mut iv_file = File::open(
-                    instance_context
-                        .base_path
-                        .join(real_parent)
-                        .join("gocryptfs.diriv"),
-                )
-                .unwrap();
-                iv_file.read_exact(&mut iv).unwrap();
-            }
-
-            let d = instance_context
-                .fs
-                .filename_decoder()
-                .get_cipher_for_dir(&iv);
-
-            let encrypted_name = d.encrypt_filename(&name.to_string_lossy()).unwrap();
-
-            let encoded_name = match &encrypted_name {
-                EncodedFilename::ShortFilename(s) => s,
-                EncodedFilename::LongFilename(l) => l.filename(),
-            };
-
-            let real_path = real_parent.join(encoded_name);
-
-            instance_context.insert_filename(filename, real_path.clone());
-
-            instance_context.base_path.join(real_path)
-        }
-    };
+    let path = instance_context.get_path(filename);
 
     log::trace!("real path : {:?}", path);
 
