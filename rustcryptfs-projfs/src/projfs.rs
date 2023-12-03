@@ -1,21 +1,40 @@
 use std::{
-    ffi::OsString,
-    fs::{File, ReadDir},
+    cmp::Ordering,
+    ffi::{c_ulong, CStr, CString, OsString},
+    fs::{DirEntry, File, ReadDir},
     io::{Read, Seek, SeekFrom},
     os::windows::{fs::MetadataExt, prelude::OsStringExt},
     path::PathBuf,
+    slice::Iter,
 };
 
 use log::trace;
 use rustcryptfs_lib::content::ContentEnc;
 use windows_sys::{
     core::{GUID, HRESULT, PCWSTR},
-    Win32::Storage::ProjectedFileSystem::{
-        PrjAllocateAlignedBuffer, PrjFillDirEntryBuffer2, PrjFreeAlignedBuffer,
-        PrjGetVirtualizationInstanceInfo, PrjWriteFileData, PrjWritePlaceholderInfo,
-        PRJ_CALLBACK_DATA, PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO, PRJ_PLACEHOLDER_INFO,
+    Win32::{
+        Foundation::ERROR_FILE_NOT_FOUND,
+        Storage::ProjectedFileSystem::{
+            PrjAllocateAlignedBuffer, PrjFileNameCompare, PrjFillDirEntryBuffer,
+            PrjFillDirEntryBuffer2, PrjFreeAlignedBuffer, PrjGetVirtualizationInstanceInfo,
+            PrjWriteFileData, PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA,
+            PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN, PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO,
+            PRJ_PLACEHOLDER_INFO,
+        },
+        System::Diagnostics::Debug::FACILITY_WIN32,
     },
 };
+
+// TODO windows::core::HRESULT
+
+#[inline]
+pub fn HRESULT_FROM_WIN32(x: c_ulong) -> HRESULT {
+    if x as i32 <= 0 {
+        x as i32
+    } else {
+        ((x & 0x0000FFFF) | ((FACILITY_WIN32 as u32) << 16) | 0x80000000) as i32
+    }
+}
 
 use crate::EncryptedFs;
 
@@ -26,10 +45,11 @@ unsafe fn u16_ptr_to_string(ptr: *const u16) -> OsString {
     OsString::from_wide(slice)
 }
 
-#[derive(Debug)]
 pub(crate) struct DirEnumData {
     diriv: [u8; 16],
-    r: ReadDir,
+    last_entry: Option<(Vec<u16>, PRJ_FILE_BASIC_INFO)>,
+    entries: Vec<(Vec<u16>, DirEntry)>,
+    iter_index: Option<usize>,
 }
 
 pub(crate) unsafe extern "system" fn start_enum_callback(
@@ -39,7 +59,11 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
-    log::trace!("start_enum_callback called for {:?}", filename);
+    log::trace!(
+        "start_enum_callback called for {:?} {}",
+        filename,
+        *callback_data.FilePathName
+    );
 
     let path = instance_context.get_path(filename);
 
@@ -50,11 +74,46 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
         iv_file.read_exact(&mut iv).unwrap();
     }
 
-    let r = std::fs::read_dir(path).unwrap();
+    let mut entries = std::fs::read_dir(path)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name() != "gocryptfs.conf" && e.file_name() != "gocryptfs.diriv")
+        .map(|entry| {
+            log::trace!("{:?}", entry.file_name());
+            (
+                instance_context
+                    .fs
+                    .filename_decoder()
+                    .get_cipher_for_dir(&iv)
+                    .decode_filename(&*entry.file_name().to_string_lossy())
+                    .unwrap()
+                    .encode_utf16()
+                    .chain(std::iter::once(0))
+                    .collect::<Vec<u16>>(),
+                entry,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    entries.sort_by(|entry1, entry2| {
+        let comp = PrjFileNameCompare(entry1.0.as_ptr(), entry2.0.as_ptr());
+        if comp < 0 {
+            Ordering::Less
+        } else if comp > 0 {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    });
 
     instance_context.enum_map.insert(
         crate::WinGuid(*enumeration_id),
-        DirEnumData { r: r, diriv: iv },
+        DirEnumData {
+            diriv: iv,
+            last_entry: None,
+            entries,
+            iter_index: None,
+        },
     );
 
     0
@@ -82,56 +141,60 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
     search_expression: PCWSTR,
     dir_entry_buffer_handle: PRJ_DIR_ENTRY_BUFFER_HANDLE,
 ) -> ::windows_sys::core::HRESULT {
-    log::trace!("get_enum_callback called");
-
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
+
+    log::debug!(
+        "get_enum_callback called : {}",
+        callback_data.Flags & PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN
+    );
 
     let data = instance_context
         .enum_map
         .get_mut(&crate::WinGuid(*enumeration_id))
         .unwrap();
 
-    log::trace!("foo {:?}", data);
+    if callback_data.Flags & PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN == 1 {
+        data.last_entry = None;
+        data.iter_index = Some(0);
+    }
 
-    while let Some(e) = data.r.next() {
-        let entry = e.unwrap();
+    let mut last_index = data.iter_index.unwrap_or(0);
 
-        if entry.file_name() == "gocryptfs.diriv" || entry.file_name() == "gocryptfs.conf" {
-            continue;
+    if let Some((last_filename, last_info)) = std::mem::replace(&mut data.last_entry, None) {
+        PrjFillDirEntryBuffer(last_filename.as_ptr(), &last_info, dir_entry_buffer_handle);
         }
 
+    while last_index < data.entries.len() {
+        let (filename, entry) = &data.entries[last_index];
+
         let metadata = entry.metadata().unwrap();
-
-        let mut os_str = instance_context
-            .fs
-            .filename_decoder()
-            .get_cipher_for_dir(&data.diriv)
-            .decode_filename(&*entry.file_name().to_string_lossy())
-            .unwrap()
-            .encode_utf16()
-            .collect::<Vec<u16>>();
-
-        os_str.push(0);
-
-        let a = os_str.as_ptr();
 
         let infos = PRJ_FILE_BASIC_INFO {
             IsDirectory: if metadata.is_dir() { 1 } else { 0 },
             FileSize: if metadata.is_dir() {
-                metadata.file_size() as i64
+                0
             } else {
                 ContentEnc::get_real_size(metadata.file_size()) as i64
             },
-            CreationTime: 0,
-            LastAccessTime: 0,
-            LastWriteTime: 0,
-            ChangeTime: 0,
+            CreationTime: metadata.creation_time() as i64,
+            LastAccessTime: metadata.last_access_time() as i64,
+            LastWriteTime: metadata.last_write_time() as i64,
+            ChangeTime: metadata.last_write_time() as i64,
             FileAttributes: 0,
         };
 
-        PrjFillDirEntryBuffer2(dir_entry_buffer_handle, a, &infos, std::ptr::null());
+        // TODO check if HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER)
+        if PrjFillDirEntryBuffer(filename.as_ptr(), &infos, dir_entry_buffer_handle) != 0 {
+            trace!("not enough size in buffer");
+            data.last_entry = Some((filename.clone(), infos));
+            break;
+        }
+
+        last_index += 1;
     }
+
+    data.iter_index = Some(last_index);
 
     0
 }
@@ -151,25 +214,19 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
 
     match path.metadata() {
         Ok(metadata) => {
-            let infos = PRJ_PLACEHOLDER_INFO {
-                FileBasicInfo: PRJ_FILE_BASIC_INFO {
+            let mut infos: PRJ_PLACEHOLDER_INFO = std::mem::zeroed();
+            infos.FileBasicInfo = PRJ_FILE_BASIC_INFO {
                     IsDirectory: if metadata.is_dir() { 1 } else { 0 },
                     FileSize: if metadata.is_dir() {
-                        metadata.file_size() as i64
+                    0
                     } else {
                         ContentEnc::get_real_size(metadata.file_size()) as i64
                     },
-                    CreationTime: 0,
-                    LastAccessTime: 0,
-                    LastWriteTime: 0,
-                    ChangeTime: 0,
+                CreationTime: metadata.creation_time() as i64,
+                LastAccessTime: metadata.last_access_time() as i64,
+                LastWriteTime: metadata.last_write_time() as i64,
+                ChangeTime: metadata.last_write_time() as i64,
                     FileAttributes: 0,
-                },
-                EaInformation: std::mem::zeroed(),
-                SecurityInformation: std::mem::zeroed(),
-                StreamsInformation: std::mem::zeroed(),
-                VersionInfo: std::mem::zeroed(),
-                VariableData: std::mem::zeroed(),
             };
 
             let hr = PrjWritePlaceholderInfo(
@@ -179,13 +236,12 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
                 std::mem::size_of_val(&infos) as u32,
             );
 
-            trace!("{} {}", super::WinError(hr), std::mem::size_of_val(&infos));
-
-            0
+            hr
         }
         Err(e) => {
             log::trace!("{}", e);
-            0x80004005u32 as i32 // TODO
+
+            HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
         }
     }
 }
