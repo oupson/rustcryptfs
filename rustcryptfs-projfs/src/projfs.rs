@@ -1,11 +1,10 @@
 use std::{
     cmp::Ordering,
-    ffi::{c_ulong, CStr, CString, OsString},
-    fs::{DirEntry, File, ReadDir},
+    ffi::{c_ulong, OsString},
+    fs::{DirEntry, File},
     io::{Read, Seek, SeekFrom},
     os::windows::{fs::MetadataExt, prelude::OsStringExt},
     path::PathBuf,
-    slice::Iter,
 };
 
 use log::trace;
@@ -16,10 +15,9 @@ use windows_sys::{
         Foundation::ERROR_FILE_NOT_FOUND,
         Storage::ProjectedFileSystem::{
             PrjAllocateAlignedBuffer, PrjFileNameCompare, PrjFillDirEntryBuffer,
-            PrjFillDirEntryBuffer2, PrjFreeAlignedBuffer, PrjGetVirtualizationInstanceInfo,
-            PrjWriteFileData, PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA,
-            PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN, PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO,
-            PRJ_PLACEHOLDER_INFO,
+            PrjFreeAlignedBuffer, PrjGetVirtualizationInstanceInfo, PrjWriteFileData,
+            PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA, PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN,
+            PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO, PRJ_PLACEHOLDER_INFO,
         },
         System::Diagnostics::Debug::FACILITY_WIN32,
     },
@@ -46,7 +44,6 @@ unsafe fn u16_ptr_to_string(ptr: *const u16) -> OsString {
 }
 
 pub(crate) struct DirEnumData {
-    diriv: [u8; 16],
     last_entry: Option<(Vec<u16>, PRJ_FILE_BASIC_INFO)>,
     entries: Vec<(Vec<u16>, DirEntry)>,
     iter_index: Option<usize>,
@@ -79,7 +76,6 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
         .filter_map(|e| e.ok())
         .filter(|e| e.file_name() != "gocryptfs.conf" && e.file_name() != "gocryptfs.diriv")
         .map(|entry| {
-            log::trace!("{:?}", entry.file_name());
             (
                 instance_context
                     .fs
@@ -109,7 +105,6 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
     instance_context.enum_map.insert(
         crate::WinGuid(*enumeration_id),
         DirEnumData {
-            diriv: iv,
             last_entry: None,
             entries,
             iter_index: None,
@@ -135,10 +130,12 @@ pub(crate) unsafe extern "system" fn end_enum_callback(
     0
 }
 
+
+// TODO : Search expression
 pub(crate) unsafe extern "system" fn get_enum_callback(
     callback_data: *const PRJ_CALLBACK_DATA,
     enumeration_id: *const GUID,
-    search_expression: PCWSTR,
+    _search_expression: PCWSTR,
     dir_entry_buffer_handle: PRJ_DIR_ENTRY_BUFFER_HANDLE,
 ) -> ::windows_sys::core::HRESULT {
     let callback_data = &*callback_data;
@@ -163,7 +160,7 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
 
     if let Some((last_filename, last_info)) = std::mem::replace(&mut data.last_entry, None) {
         PrjFillDirEntryBuffer(last_filename.as_ptr(), &last_info, dir_entry_buffer_handle);
-        }
+    }
 
     while last_index < data.entries.len() {
         let (filename, entry) = &data.entries[last_index];
@@ -210,23 +207,21 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
 
     let path = instance_context.get_path(filename);
 
-    log::trace!("real path : {:?}", path);
-
     match path.metadata() {
         Ok(metadata) => {
             let mut infos: PRJ_PLACEHOLDER_INFO = std::mem::zeroed();
             infos.FileBasicInfo = PRJ_FILE_BASIC_INFO {
-                    IsDirectory: if metadata.is_dir() { 1 } else { 0 },
-                    FileSize: if metadata.is_dir() {
+                IsDirectory: if metadata.is_dir() { 1 } else { 0 },
+                FileSize: if metadata.is_dir() {
                     0
-                    } else {
-                        ContentEnc::get_real_size(metadata.file_size()) as i64
-                    },
+                } else {
+                    ContentEnc::get_real_size(metadata.file_size()) as i64
+                },
                 CreationTime: metadata.creation_time() as i64,
                 LastAccessTime: metadata.last_access_time() as i64,
                 LastWriteTime: metadata.last_write_time() as i64,
                 ChangeTime: metadata.last_write_time() as i64,
-                    FileAttributes: 0,
+                FileAttributes: 0,
             };
 
             let hr = PrjWritePlaceholderInfo(
@@ -263,8 +258,6 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
     log::trace!("get_file_data_callback called : {:?}", filename);
 
     let path = instance_context.get_path(filename);
-
-    log::trace!("real path : {:?}", path);
 
     let size = length as usize;
 
