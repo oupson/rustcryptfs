@@ -1,19 +1,19 @@
 use std::{
     ffi::OsString,
     fs::{File, ReadDir},
-    io::Read,
-    os::windows::{ffi::OsStrExt, fs::MetadataExt, prelude::OsStringExt},
+    io::{Read, Seek, SeekFrom},
+    os::windows::{fs::MetadataExt, prelude::OsStringExt},
     path::PathBuf,
 };
 
 use log::trace;
-use rustcryptfs_lib::filename::EncodedFilename;
+use rustcryptfs_lib::content::ContentEnc;
 use windows_sys::{
     core::{GUID, HRESULT, PCWSTR},
     Win32::Storage::ProjectedFileSystem::{
-        PrjFillDirEntryBuffer2, PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA,
-        PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO, PRJ_PLACEHOLDER_INFO,
-        PRJ_PLACEHOLDER_INFO_0,
+        PrjAllocateAlignedBuffer, PrjFillDirEntryBuffer2, PrjFreeAlignedBuffer,
+        PrjGetVirtualizationInstanceInfo, PrjWriteFileData, PrjWritePlaceholderInfo,
+        PRJ_CALLBACK_DATA, PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO, PRJ_PLACEHOLDER_INFO,
     },
 };
 
@@ -118,7 +118,11 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
 
         let infos = PRJ_FILE_BASIC_INFO {
             IsDirectory: if metadata.is_dir() { 1 } else { 0 },
-            FileSize: metadata.file_size() as i64,
+            FileSize: if metadata.is_dir() {
+                metadata.file_size() as i64
+            } else {
+                ContentEnc::get_real_size(metadata.file_size()) as i64
+            },
             CreationTime: 0,
             LastAccessTime: 0,
             LastWriteTime: 0,
@@ -150,7 +154,11 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
             let infos = PRJ_PLACEHOLDER_INFO {
                 FileBasicInfo: PRJ_FILE_BASIC_INFO {
                     IsDirectory: if metadata.is_dir() { 1 } else { 0 },
-                    FileSize: metadata.file_size() as i64,
+                    FileSize: if metadata.is_dir() {
+                        metadata.file_size() as i64
+                    } else {
+                        ContentEnc::get_real_size(metadata.file_size()) as i64
+                    },
                     CreationTime: 0,
                     LastAccessTime: 0,
                     LastWriteTime: 0,
@@ -177,7 +185,7 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
         }
         Err(e) => {
             log::trace!("{}", e);
-            0x80004005u32 as i32
+            0x80004005u32 as i32 // TODO
         }
     }
 }
@@ -187,7 +195,91 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
     byte_offset: u64,
     length: u32,
 ) -> HRESULT {
-    log::trace!("get_file_data_callback called");
+    let callback_data = &*callback_data;
+    let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
+    let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
+
+    let mut infos = std::mem::zeroed();
+    PrjGetVirtualizationInstanceInfo(callback_data.NamespaceVirtualizationContext, &mut infos);
+
+    trace!("{}", infos.WriteAlignment);
+
+    log::trace!("get_file_data_callback called : {:?}", filename);
+
+    let path = instance_context.get_path(filename);
+
+    log::trace!("real path : {:?}", path);
+
+    let size = length as usize;
+
+    let mut file = File::open(path).unwrap();
+    let decoder = instance_context.fs.content_decoder();
+
+    let mut buf = [0u8; 18];
+    let n = file.read(&mut buf).unwrap();
+    let id = if n < 18 { None } else { Some(&buf[2..]) };
+
+    let mut block_index = byte_offset / 4096;
+
+    let mut buffer = Vec::with_capacity(size);
+
+    let mut rem = size;
+
+    let mut buf = [0u8; 4096 + 32];
+
+    file.seek(SeekFrom::Start(18 + block_index * (4096 + 32)))
+        .unwrap();
+
+    {
+        let n = file.read(&mut buf).unwrap();
+
+        let res = decoder
+            .decrypt_block(&mut buf[..n], block_index, id)
+            .unwrap();
+
+        let seek = (byte_offset as u64 - block_index * 4096) as usize;
+        buffer.extend_from_slice(&res[seek..]);
+
+        block_index += 1;
+
+        rem -= res.len() - seek;
+    }
+
+    while rem > 0 {
+        let n = file.read(&mut buf).unwrap();
+
+        if n == 0 {
+            break;
+        }
+
+        let res = decoder
+            .decrypt_block(&mut buf[..n], block_index, id)
+            .unwrap();
+
+        let size = res.len().min(rem);
+
+        buffer.extend_from_slice(&res[..size]);
+
+        block_index += 1;
+
+        rem -= size;
+    }
+
+    let prjbuf =
+        PrjAllocateAlignedBuffer(callback_data.NamespaceVirtualizationContext, buffer.len())
+            as *mut u8;
+
+    prjbuf.copy_from(buffer.as_ptr(), buffer.len());
+
+    PrjWriteFileData(
+        callback_data.NamespaceVirtualizationContext,
+        &callback_data.DataStreamId,
+        prjbuf as *mut _,
+        byte_offset,
+        buffer.len() as u32,
+    );
+
+    PrjFreeAlignedBuffer(prjbuf as *mut _);
 
     0
 }
