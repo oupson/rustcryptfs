@@ -140,6 +140,10 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
         callback_data.Flags & PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN
     );
 
+    if instance_context.is_stopping.load(std::sync::atomic::Ordering::Relaxed) {
+        return 0;
+    }
+
     let data = instance_context
         .enum_map
         .get_mut(&crate::WinGuid(*enumeration_id))
