@@ -1,15 +1,11 @@
 use std::{
     collections::HashMap,
-    error::Error,
-    ffi::CStr,
-    fmt::{Debug, Display},
     fs::File,
     hash::{Hash, Hasher},
     io::Read,
     mem::MaybeUninit,
     os::{raw::c_void, windows::prelude::OsStrExt},
     path::{Path, PathBuf},
-    slice,
     sync::{atomic::AtomicBool, mpsc::channel},
 };
 
@@ -23,10 +19,7 @@ use windows_sys::Win32::Storage::ProjectedFileSystem::{
     PRJ_UPDATE_ALLOW_DIRTY_DATA, PRJ_UPDATE_ALLOW_DIRTY_METADATA, PRJ_UPDATE_ALLOW_READ_ONLY,
     PRJ_UPDATE_ALLOW_TOMBSTONE,
 };
-use windows_sys::Win32::System::Diagnostics::Debug::{
-    FormatMessageA, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
-    FORMAT_MESSAGE_IGNORE_INSERTS,
-};
+
 use windows_sys::{
     core::GUID,
     Win32::{
@@ -38,90 +31,11 @@ use windows_sys::{
     },
 };
 
+use crate::error::ToWinResult;
+
 pub mod error;
 mod projfs;
 pub(crate) mod write_buffer;
-
-#[repr(transparent)]
-pub struct WinError(i32);
-
-impl Display for WinError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut buffer = std::ptr::null_mut();
-        let size = unsafe {
-            FormatMessageA(
-                FORMAT_MESSAGE_ALLOCATE_BUFFER
-                    | FORMAT_MESSAGE_FROM_SYSTEM
-                    | FORMAT_MESSAGE_IGNORE_INSERTS,
-                std::ptr::null(),
-                self.0 as u32,
-                0,
-                &mut buffer as *mut *mut i8 as *mut _,
-                0,
-                std::ptr::null(),
-            )
-        };
-
-        let buffer = unsafe {
-            CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
-                buffer as *mut u8,
-                (size + 1) as usize,
-            ))
-        };
-
-        write!(
-            f,
-            "Windows Error : 0x{:08X} :{}",
-            self.0,
-            buffer.to_string_lossy()
-        )
-    }
-}
-
-impl Debug for WinError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut buffer = std::ptr::null_mut();
-        let size = unsafe {
-            FormatMessageA(
-                FORMAT_MESSAGE_ALLOCATE_BUFFER
-                    | FORMAT_MESSAGE_FROM_SYSTEM
-                    | FORMAT_MESSAGE_IGNORE_INSERTS,
-                std::ptr::null(),
-                self.0 as u32,
-                0,
-                &mut buffer as *mut *mut i8 as *mut _,
-                0,
-                std::ptr::null(),
-            )
-        };
-
-        let buffer = unsafe {
-            CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
-                buffer as *mut u8,
-                (size + 1) as usize,
-            ))
-        };
-
-        f.debug_struct("WinError")
-            .field("error_code", &format!("0x{:08X}", self.0))
-            .field("msg", &buffer.to_string_lossy())
-            .finish()
-    }
-}
-
-impl Error for WinError {}
-
-macro_rules! win_to_res {
-    ($l:expr) => {{
-        let res = $l;
-
-        if (res < 0) {
-            Err(WinError(res))
-        } else {
-            Ok(res)
-        }
-    }};
-}
 
 #[repr(transparent)]
 struct WinGuid(GUID);
@@ -233,7 +147,7 @@ impl EncryptedFs {
         let mountpoint = mountpoint.as_ref();
         unsafe {
             let mut instance_id: GUID = MaybeUninit::zeroed().assume_init();
-            win_to_res!(CoCreateGuid(&mut instance_id))?;
+            CoCreateGuid(&mut instance_id).to_win_result()?;
 
             let mut root_name: Vec<u16> = mountpoint.as_os_str().encode_wide().collect();
             root_name.push(0);
@@ -241,12 +155,8 @@ impl EncryptedFs {
             let info: PRJ_PLACEHOLDER_VERSION_INFO = MaybeUninit::zeroed().assume_init();
 
             let ptr = root_name.as_ptr();
-            win_to_res!(PrjMarkDirectoryAsPlaceholder(
-                ptr,
-                std::ptr::null(),
-                &info,
-                &instance_id
-            ))?;
+            PrjMarkDirectoryAsPlaceholder(ptr, std::ptr::null(), &info, &instance_id)
+                .to_win_result()?;
 
             let mut callback_table: PRJ_CALLBACKS = MaybeUninit::zeroed().assume_init();
 
@@ -260,13 +170,14 @@ impl EncryptedFs {
 
             let mut instance_handle: PRJ_NAMESPACE_VIRTUALIZATION_CONTEXT =
                 MaybeUninit::zeroed().assume_init();
-            win_to_res!(PrjStartVirtualizing(
+            PrjStartVirtualizing(
                 ptr,
                 &callback_table,
                 this as *const c_void,
                 std::ptr::null(),
-                &mut instance_handle
-            ))?;
+                &mut instance_handle,
+            )
+            .to_win_result()?;
 
             trace!("mounted");
 
@@ -308,7 +219,10 @@ unsafe fn delete_recursively(
             .chain(std::iter::once(0))
             .collect::<Vec<u16>>();
 
-        if win_to_res!(PrjGetOnDiskFileState(wide_name.as_ptr(), &mut file_state)).is_ok() {
+        if PrjGetOnDiskFileState(wide_name.as_ptr(), &mut file_state)
+            .to_win_result()
+            .is_ok()
+        {
             let path = e.path();
             let delete_result = if e.file_type()?.is_dir() {
                 delete_recursively(instance, root_path, &path)?;
@@ -336,15 +250,16 @@ fn delete_file_from_projection(
         .chain(std::iter::once(0))
         .collect::<Vec<u16>>();
     unsafe {
-        win_to_res!(PrjDeleteFile(
+        PrjDeleteFile(
             instance,
             filename.as_ptr(),
             PRJ_UPDATE_ALLOW_DIRTY_DATA
                 | PRJ_UPDATE_ALLOW_DIRTY_METADATA
                 | PRJ_UPDATE_ALLOW_READ_ONLY
                 | PRJ_UPDATE_ALLOW_TOMBSTONE,
-            std::ptr::null_mut()
-        ))?;
+            std::ptr::null_mut(),
+        )
+        .to_win_result()?;
     }
     Ok(())
 }
