@@ -14,10 +14,9 @@ use windows_sys::{
     Win32::{
         Foundation::ERROR_FILE_NOT_FOUND,
         Storage::ProjectedFileSystem::{
-            PrjAllocateAlignedBuffer, PrjFileNameCompare, PrjFillDirEntryBuffer,
-            PrjFreeAlignedBuffer, PrjGetVirtualizationInstanceInfo, PrjWriteFileData,
-            PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA, PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN,
-            PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO, PRJ_PLACEHOLDER_INFO,
+            PrjFileNameCompare, PrjFillDirEntryBuffer, PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA,
+            PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN, PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO,
+            PRJ_PLACEHOLDER_INFO,
         },
         System::Diagnostics::Debug::FACILITY_WIN32,
     },
@@ -26,7 +25,7 @@ use windows_sys::{
 // TODO windows::core::HRESULT
 
 #[inline]
-pub fn HRESULT_FROM_WIN32(x: c_ulong) -> HRESULT {
+pub fn hresult_from_win32(x: c_ulong) -> HRESULT {
     if x as i32 <= 0 {
         x as i32
     } else {
@@ -56,11 +55,7 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
-    log::trace!(
-        "start_enum_callback called for {:?} {}",
-        filename,
-        *callback_data.FilePathName
-    );
+    log::trace!("start_enum_callback called",);
 
     let path = instance_context.get_path(filename);
 
@@ -130,7 +125,6 @@ pub(crate) unsafe extern "system" fn end_enum_callback(
     0
 }
 
-
 // TODO : Search expression
 pub(crate) unsafe extern "system" fn get_enum_callback(
     callback_data: *const PRJ_CALLBACK_DATA,
@@ -178,7 +172,7 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
             LastAccessTime: metadata.last_access_time() as i64,
             LastWriteTime: metadata.last_write_time() as i64,
             ChangeTime: metadata.last_write_time() as i64,
-            FileAttributes: 0,
+            FileAttributes: metadata.file_attributes(),
         };
 
         // TODO check if HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER)
@@ -203,7 +197,7 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
 
-    log::trace!("get_placeholder_info_callback called : {:?}", filename);
+    log::trace!("get_placeholder_info_callback called");
 
     let path = instance_context.get_path(filename);
 
@@ -221,7 +215,7 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
                 LastAccessTime: metadata.last_access_time() as i64,
                 LastWriteTime: metadata.last_write_time() as i64,
                 ChangeTime: metadata.last_write_time() as i64,
-                FileAttributes: 0,
+                FileAttributes: metadata.file_attributes(),
             };
 
             let hr = PrjWritePlaceholderInfo(
@@ -236,7 +230,7 @@ pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
         Err(e) => {
             log::trace!("{}", e);
 
-            HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
+            hresult_from_win32(ERROR_FILE_NOT_FOUND)
         }
     }
 }
@@ -250,14 +244,7 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
 
-    let mut infos = std::mem::zeroed();
-    PrjGetVirtualizationInstanceInfo(callback_data.NamespaceVirtualizationContext, &mut infos);
-
-    trace!("{}", infos.WriteAlignment);
-
-    log::trace!("get_file_data_callback called : {:?}", filename);
-
-    let path = instance_context.get_path(filename);
+    let path = instance_context.get_path(filename.clone());
 
     let size = length as usize;
 
@@ -270,10 +257,13 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
 
     let mut block_index = byte_offset / 4096;
 
-    let mut buffer = Vec::with_capacity(size);
-
     let mut rem = size;
 
+    let mut writter = crate::write_buffer::WriteBuffer::new(
+        callback_data.NamespaceVirtualizationContext,
+        callback_data.DataStreamId,
+        byte_offset,
+    );
     let mut buf = [0u8; 4096 + 32];
 
     file.seek(SeekFrom::Start(18 + block_index * (4096 + 32)))
@@ -287,8 +277,8 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
             .unwrap();
 
         let seek = (byte_offset as u64 - block_index * 4096) as usize;
-        buffer.extend_from_slice(&res[seek..]);
 
+        writter.append_buf(&res[seek..]);
         block_index += 1;
 
         rem -= res.len() - seek;
@@ -307,28 +297,14 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
 
         let size = res.len().min(rem);
 
-        buffer.extend_from_slice(&res[..size]);
+        writter.append_buf(&res[..size]);
 
         block_index += 1;
 
         rem -= size;
     }
 
-    let prjbuf =
-        PrjAllocateAlignedBuffer(callback_data.NamespaceVirtualizationContext, buffer.len())
-            as *mut u8;
-
-    prjbuf.copy_from(buffer.as_ptr(), buffer.len());
-
-    PrjWriteFileData(
-        callback_data.NamespaceVirtualizationContext,
-        &callback_data.DataStreamId,
-        prjbuf as *mut _,
-        byte_offset,
-        buffer.len() as u32,
-    );
-
-    PrjFreeAlignedBuffer(prjbuf as *mut _);
+    writter.finish();
 
     0
 }

@@ -1,22 +1,22 @@
-use std::collections::HashMap;
-use std::ffi::{CStr, CString, OsString};
-use std::fs::File;
-use std::hash::{Hash, Hasher};
-use std::io::Read;
-use std::iter::Map;
-use std::path::PathBuf;
 use std::{
-    error::Error, fmt::Display, mem::MaybeUninit, os::windows::prelude::OsStrExt, path::Path,
+    collections::HashMap,
+    error::Error,
+    ffi::CStr,
+    fmt::Display,
+    fs::File,
+    hash::{Hash, Hasher},
+    io::Read,
+    mem::MaybeUninit,
+    os::{raw::c_void, windows::prelude::OsStrExt},
+    path::{Path, PathBuf},
+    slice,
+    sync::mpsc::channel,
 };
 
-use std::sync::mpsc::channel;
-
-use libc::c_void;
 use rustcryptfs_lib::GocryptFs;
 
 use error::Result;
 use rustcryptfs_lib::filename::EncodedFilename;
-use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::Storage::ProjectedFileSystem::PRJ_PLACEHOLDER_VERSION_INFO;
 use windows_sys::Win32::System::Diagnostics::Debug::{
     FormatMessageA, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
@@ -35,6 +35,7 @@ use windows_sys::{
 
 pub mod error;
 mod projfs;
+pub(crate) mod write_buffer;
 
 #[repr(transparent)]
 #[derive(Debug)]
@@ -57,7 +58,12 @@ impl Display for WinError {
             )
         };
 
-        let buffer = unsafe { CStr::from_ptr(buffer) };
+        let buffer = unsafe {
+            CStr::from_bytes_with_nul_unchecked(slice::from_raw_parts(
+                buffer as *mut u8,
+                (size + 1) as usize,
+            ))
+        };
 
         write!(
             f,
