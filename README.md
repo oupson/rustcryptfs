@@ -5,8 +5,8 @@ An implementation of [gocryptfs](https://github.com/rfjakob/gocryptfs) in Rust.
 - [x] Linux (via FUSE)
     - [x] read
     - [ ] write
-- [ ] Windows
-    - [ ] read
+- [x] Windows
+    - [x] read
     - [ ] write
 
 ## Features

@@ -9,7 +9,7 @@ use std::{
     sync::{atomic::AtomicBool, mpsc::channel},
 };
 
-use log::{info, trace, warn};
+use log::{info, warn};
 use rustcryptfs_lib::GocryptFs;
 
 use error::Result;
@@ -178,8 +178,6 @@ impl EncryptedFs {
                 &mut instance_handle,
             )
             .to_win_result()?;
-
-            trace!("mounted");
 
             let (tx, rx) = channel();
 

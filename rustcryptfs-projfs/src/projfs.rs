@@ -52,10 +52,10 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
     callback_data: *const PRJ_CALLBACK_DATA,
     enumeration_id: *const GUID,
 ) -> HRESULT {
+    trace!("start_enum_callback");
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
-    log::trace!("start_enum_callback called",);
 
     let path = instance_context.get_path(filename);
 
@@ -113,8 +113,7 @@ pub(crate) unsafe extern "system" fn end_enum_callback(
     callback_data: *const PRJ_CALLBACK_DATA,
     enumeration_id: *const GUID,
 ) -> HRESULT {
-    log::trace!("end_enum_callback called");
-
+    trace!("end_enum_callback");
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
 
@@ -132,13 +131,9 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
     _search_expression: PCWSTR,
     dir_entry_buffer_handle: PRJ_DIR_ENTRY_BUFFER_HANDLE,
 ) -> ::windows_sys::core::HRESULT {
+    trace!("get_enum_callback");
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
-
-    log::debug!(
-        "get_enum_callback called : {}",
-        callback_data.Flags & PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN
-    );
 
     if instance_context.is_stopping.load(std::sync::atomic::Ordering::Relaxed) {
         return 0;
@@ -197,11 +192,10 @@ pub(crate) unsafe extern "system" fn get_enum_callback(
 pub(crate) unsafe extern "system" fn get_placeholder_info_callback(
     callback_data: *const PRJ_CALLBACK_DATA,
 ) -> ::windows_sys::core::HRESULT {
+    trace!("get_placeholder_info_callback");
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
-
-    log::trace!("get_placeholder_info_callback called");
 
     let path = instance_context.get_path(filename);
 
@@ -244,6 +238,7 @@ pub(crate) unsafe extern "system" fn get_file_data_callback(
     byte_offset: u64,
     length: u32,
 ) -> HRESULT {
+    trace!("get_file_data_callback");
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
     let filename = PathBuf::from(u16_ptr_to_string(callback_data.FilePathName));
