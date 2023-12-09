@@ -7,12 +7,12 @@ use std::{
     path::PathBuf,
 };
 
-use log::trace;
+use log::{trace, warn};
 use rustcryptfs_lib::content::ContentEnc;
 use windows_sys::{
     core::{GUID, HRESULT, PCWSTR},
     Win32::{
-        Foundation::ERROR_FILE_NOT_FOUND,
+        Foundation::{ERROR_FILE_NOT_FOUND, E_INVALIDARG},
         Storage::ProjectedFileSystem::{
             PrjFileNameCompare, PrjFillDirEntryBuffer, PrjWritePlaceholderInfo, PRJ_CALLBACK_DATA,
             PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN, PRJ_DIR_ENTRY_BUFFER_HANDLE, PRJ_FILE_BASIC_INFO,
@@ -46,6 +46,7 @@ pub(crate) struct DirEnumData {
     last_entry: Option<(Vec<u16>, PRJ_FILE_BASIC_INFO)>,
     entries: Vec<(Vec<u16>, DirEntry)>,
     iter_index: Option<usize>,
+    search_expression: Option<Vec<u16>>,
 }
 
 pub(crate) unsafe extern "system" fn start_enum_callback(
@@ -103,6 +104,7 @@ pub(crate) unsafe extern "system" fn start_enum_callback(
             last_entry: None,
             entries,
             iter_index: None,
+            search_expression: None,
         },
     );
 
@@ -128,35 +130,69 @@ pub(crate) unsafe extern "system" fn end_enum_callback(
 pub(crate) unsafe extern "system" fn get_enum_callback(
     callback_data: *const PRJ_CALLBACK_DATA,
     enumeration_id: *const GUID,
-    _search_expression: PCWSTR,
+    search_expression: PCWSTR,
     dir_entry_buffer_handle: PRJ_DIR_ENTRY_BUFFER_HANDLE,
 ) -> ::windows_sys::core::HRESULT {
     trace!("get_enum_callback");
     let callback_data = &*callback_data;
     let instance_context = &mut *(callback_data.InstanceContext as *mut EncryptedFs);
 
-    if instance_context.is_stopping.load(std::sync::atomic::Ordering::Relaxed) {
+    if instance_context
+        .is_stopping
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         return 0;
     }
 
-    let data = instance_context
+    let data = if let Some(data) = instance_context
         .enum_map
         .get_mut(&crate::WinGuid(*enumeration_id))
-        .unwrap();
+    {
+        data
+    } else {
+        warn!("unknown enumeration");
+        return E_INVALIDARG;
+    };
 
     if callback_data.Flags & PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN == 1 {
         data.last_entry = None;
         data.iter_index = Some(0);
+
+        if search_expression != std::ptr::null() {
+            let len = libc::wcslen(search_expression) + 1;
+            data.search_expression =
+                Some(std::slice::from_raw_parts(search_expression, len).to_vec());
+        } else {
+            data.search_expression = None;
+        }
     }
 
     let mut last_index = data.iter_index.unwrap_or(0);
 
     if let Some((last_filename, last_info)) = std::mem::replace(&mut data.last_entry, None) {
-        PrjFillDirEntryBuffer(last_filename.as_ptr(), &last_info, dir_entry_buffer_handle);
+        let insert = if let Some(search_expression) = &data.search_expression {
+            PrjFileNameCompare(last_filename.as_ptr(), search_expression.as_ptr()) != 0
+        } else {
+            false
+        };
+
+        if insert {
+            PrjFillDirEntryBuffer(last_filename.as_ptr(), &last_info, dir_entry_buffer_handle);
+        }
     }
 
     while last_index < data.entries.len() {
         let (filename, entry) = &data.entries[last_index];
+
+        let insert = if let Some(search_expression) = &data.search_expression {
+            PrjFileNameCompare(filename.as_ptr(), search_expression.as_ptr()) != 0
+        } else {
+            false
+        };
+
+        if !insert {
+            continue;
+        }
 
         let metadata = entry.metadata().unwrap();
 
