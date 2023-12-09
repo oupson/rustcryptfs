@@ -27,29 +27,29 @@ pub(crate) enum Commands {
 #[derive(Debug, Parser)]
 pub(crate) struct DecryptCommand {
     /// The file to decrypt
-    pub(crate) file_path : String,
+    pub(crate) file_path: String,
 
     /// Path to the gocryptfs directory
     #[clap(short('g'), long)]
-    pub(crate) gocryptfs_path : Option<String>,
+    pub(crate) gocryptfs_path: Option<String>,
 
     /// The password
     #[clap(short, long)]
-    pub(crate) password : Option<String>
+    pub(crate) password: Option<String>,
 }
 
 #[derive(Debug, Parser)]
 pub(crate) struct LsCommand {
     /// The directory
-    pub(crate) folder_path : String,
+    pub(crate) folder_path: String,
 
     /// Path to the gocryptfs directory
     #[clap(short('g'), long)]
-    pub(crate) gocryptfs_path : Option<String>,
+    pub(crate) gocryptfs_path: Option<String>,
 
     /// The password
     #[clap(short, long)]
-    pub(crate) password : Option<String>
+    pub(crate) password: Option<String>,
 }
 
 #[cfg(feature = "mount")]

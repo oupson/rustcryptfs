@@ -1,0 +1,22 @@
+[package]
+name = "rustcryptfs-projfs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+rustcryptfs-lib = { path = "../rustcryptfs-lib" }
+thiserror = "1.0"
+libc = "0.2"
+ctrlc = "3.2"
+
+[dependencies.windows-sys]
+version = "0.52.0"
+features = [
+    "Win32_Storage_ProjectedFileSystem",
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_Debug"
+]

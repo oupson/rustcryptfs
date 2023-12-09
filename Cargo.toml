@@ -1,9 +1,11 @@
 [workspace]
+resolver = "2"
 members = [
     "rustcryptfs",
     "rustcryptfs-lib",
     "rustcryptfs-fuse",
-    "rustcryptfs-mount"
+    "rustcryptfs-mount",
+    "rustcryptfs-projfs"
 ]
 
 [profile.release]

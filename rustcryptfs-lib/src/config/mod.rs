@@ -71,7 +71,7 @@ impl CryptConf {
     /// See gocryptfs documentation about [master key](https://nuetzlich.net/gocryptfs/forward_mode_crypto/#master-key-storage).
     ///
     /// ![TODO NAME THIS IMAGE](https://nuetzlich.net/gocryptfs/img/master-key.svg)
-    /// 
+    ///
     /// # Errors
     /// Return an error when the master key don't have the required size or if the decrypting failed.
     pub fn get_master_key(&self, password: &[u8]) -> Result<[u8; 32], ConfigError> {

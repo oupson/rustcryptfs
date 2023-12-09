@@ -15,7 +15,6 @@ pub enum Error {
     RustCryptFsFilenameError(#[from] FilenameCipherError),
 }
 
-
 pub(crate) trait ErrorExt {
     fn to_raw_code(&self) -> i32;
 }

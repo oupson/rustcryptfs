@@ -140,5 +140,16 @@ fn mount(mount: &MountCommand) -> anyhow::Result<()> {
 #[cfg(target_os = "windows")]
 #[cfg(feature = "mount")]
 fn mount(mount: &MountCommand) -> anyhow::Result<()> {
-    unimplemented!()
+    use anyhow::Context;
+
+    let password = if let Some(password) = &mount.password {
+        password.clone()
+    } else {
+        rpassword::prompt_password("Your password: ")?
+    };
+
+    rustcryptfs_mount::mount(&mount.path, &mount.mountpoint, &password)
+        .context("Failed to run gocryptfs")?;
+
+    Ok(())
 }

@@ -3,3 +3,5 @@
 enc
 mount
 .cargo
+
+test.ps1

@@ -11,3 +11,6 @@ repository = "https://github.com/oupson/rustcryptfs/"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustcryptfs-fuse = { path = "../rustcryptfs-fuse" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+rustcryptfs-projfs = { path = "../rustcryptfs-projfs" }

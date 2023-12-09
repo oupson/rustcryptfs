@@ -19,7 +19,7 @@ pub struct ContentEnc {
 
 impl ContentEnc {
     /// Init a new `ContentEnc` from the master key and the iv len.
-    /// 
+    ///
     /// # Errors
     /// Return an error if the filename key cannot be derived from the `master_key`.
     pub fn new(master_key: &[u8], iv_len: u8) -> Result<Self, ContentCipherError> {
@@ -35,7 +35,7 @@ impl ContentEnc {
 
     /// Decrypt a encrypted block of len (`iv_len` + `decrypted_block_size` + `iv_len`), with the block number and the file id.
     /// The content of block is replaced with the plain text, in form of iv + plaintext + tag.
-    /// 
+    ///
     /// # Errors
     /// Return an error if `block` is too short, or if the nonce is full of 0, or if the decrypting failed.
     pub fn decrypt_block<'a>(
